@@ -1,0 +1,15 @@
+WOLM1 hdr os=Linux uid=0
+WOLM1 route vmbr0 0
+WOLM1 if eno1 mac=aa:bb:cc:00:00:01 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=aa:bb:cc:00:00:01 wol=pumbg/d
+WOLM1 if enp2s0 mac=aa:bb:cc:00:00:02 type=1 kind=phys aat=0 oper=down carrier= lower=- perm=aa:bb:cc:00:00:02 wol=pumbg/d
+WOLM1 if fwbr100i0 mac=d2:4e:1f:00:00:01 type=1 kind=bridge aat=3 oper=up carrier=1 lower=fwln100i0,tap100i0 perm=- wol=-
+WOLM1 if fwln100i0 mac=d2:4e:1f:00:00:02 type=1 kind=virtual aat=1 oper=up carrier=1 lower=- perm=- wol=-
+WOLM1 if fwpr100p0 mac=fe:aa:aa:aa:aa:aa type=1 kind=virtual aat=1 oper=up carrier=1 lower=- perm=- wol=-
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if tap100i0 mac=fe:11:22:33:44:55 type=1 kind=virtual aat=3 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if vmbr0 mac=aa:bb:cc:00:00:99 type=1 kind=bridge aat=3 oper=up carrier=1 lower=eno1,fwpr100p0 perm=- wol=-
+WOLM1 if wt0 mac=- type=65534 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet vmbr0 192.168.1.10/24
+WOLM1 inet wt0 100.105.12.34/16
+WOLM1 end

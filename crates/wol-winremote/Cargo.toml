@@ -1,0 +1,45 @@
+[package]
+name = "wol-winremote"
+description = "Windows remote management for WoL Manager: restart, shutdown, boot time, physical MAC (SMB/RPC, WMI) and Credential Manager secrets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+zeroize.workspace = true
+log.workspace = true
+
+[dependencies.windows-sys]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Credentials",
+    "Win32_System_Shutdown",
+    "Win32_NetworkManagement_WNet",
+    "Win32_NetworkManagement_NetManagement",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemInformation",
+]
+
+[dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_System_Rpc",
+    "Win32_System_Wmi",
+    "Win32_System_Variant",
+    "Win32_System_Ole",
+    "Win32_Security",
+]
+
+[lints]
+workspace = true

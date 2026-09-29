@@ -23,6 +23,8 @@ serde_json.workspace = true
 anstream.workspace = true
 anstyle.workspace = true
 unicode-width.workspace = true
+rpassword.workspace = true
+zeroize.workspace = true
 
 [dependencies.windows-sys]
 workspace = true

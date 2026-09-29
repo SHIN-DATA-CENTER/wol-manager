@@ -16,6 +16,7 @@ mod editor;
 mod geometry;
 mod logging;
 mod persist;
+mod remote;
 mod rows;
 mod scheduler;
 mod session;

@@ -18,10 +18,12 @@ export component ConfirmOverlay inherits ModalFrame {
         : root.kind == ConfirmKind.portable-enable ? @tr("Switch to portable mode?")
         : root.kind == ConfirmKind.portable-disable ? @tr("Turn off portable mode?")
         : root.kind == ConfirmKind.portable-overwrite ? @tr("Replace the existing data folder?")
+        : root.kind == ConfirmKind.forget-host-key ? @tr("Forget the trusted host key?")
         : @tr("Save as a new host?");
     title-icon: root.kind == ConfirmKind.delete-host ? CoolIcons.trash
         : root.kind == ConfirmKind.wake-all ? CoolIcons.wake
         : root.kind == ConfirmKind.save-as-new ? CoolIcons.help
+        : root.kind == ConfirmKind.forget-host-key ? CoolIcons.shield-warning
         : CoolIcons.folder;
     card-width: 460px;
     show-close-button: false;
@@ -32,6 +34,7 @@ export component ConfirmOverlay inherits ModalFrame {
         : root.kind == ConfirmKind.portable-enable ? @tr("Settings will be stored in the following folder next to wol-manager.exe. The file wol-manager.portable marks this copy as portable.")
         : root.kind == ConfirmKind.portable-disable ? @tr("Settings will be stored in AppData again. The data folder next to wol-manager.exe is kept.")
         : root.kind == ConfirmKind.portable-overwrite ? @tr("A data folder with settings already exists here. Replace it with the current settings, or keep using the existing settings?")
+        : root.kind == ConfirmKind.forget-host-key ? @tr("The next time WoL Manager connects to “{0}”, it will ask you to check the host key again. Do this only if you know why the key changed, for example because the host was reinstalled.", root.req.subject)
         : @tr("“{0}” was deleted by another program while you were editing it. Save it as a new host?", root.req.subject);
 
     property <string> accept-text: root.kind == ConfirmKind.delete-host ? @tr("Delete")
@@ -39,6 +42,7 @@ export component ConfirmOverlay inherits ModalFrame {
         : root.kind == ConfirmKind.portable-enable ? @tr("Switch")
         : root.kind == ConfirmKind.portable-disable ? @tr("Turn off")
         : root.kind == ConfirmKind.portable-overwrite ? @tr("Replace")
+        : root.kind == ConfirmKind.forget-host-key ? @tr("Forget")
         : @tr("Save as new");
 
     function accept(alternate: bool) {
@@ -54,7 +58,15 @@ export component ConfirmOverlay inherits ModalFrame {
     }
 
     close-requested => { root.cancel(); }
-    init => { accept-button.focus(); }
+    // v0.2: forgetting a pinned SSH host key weakens the protection against a changed key, so
+    // Enter must not do it by accident: Cancel has the initial focus there.
+    init => {
+        if root.kind == ConfirmKind.forget-host-key {
+            cancel-button.focus();
+        } else {
+            accept-button.focus();
+        }
+    }
 
     VerticalLayout {
         padding-left: 20px;
@@ -98,7 +110,7 @@ export component ConfirmOverlay inherits ModalFrame {
             min-width: 96px;
             clicked => { root.accept(true); }
         }
-        Button {
+        cancel-button := Button {
             text: @tr("Cancel");
             min-width: 96px;
             clicked => { root.cancel(); }

@@ -5,10 +5,12 @@ members = [
     "crates/wol-build",
     "crates/wol-manager",
     "crates/wolm",
+    "crates/wol-ssh",
+    "crates/wol-winremote",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.92"
 license = "Apache-2.0"
@@ -37,6 +39,15 @@ gui-quit-event = 'Local\wol-manager.gui.8d3c5f2a-7b41-4e9a-a6c2-1f0e9b7d4c35.qui
 [workspace.dependencies]
 wol-core = { path = "crates/wol-core" }
 wol-build = { path = "crates/wol-build" }
+wol-ssh = { path = "crates/wol-ssh" }
+wol-winremote = { path = "crates/wol-winremote" }
+
+# remote management (v0.2.0)
+russh = { version = "0.63.3", default-features = false, features = ["ring", "rsa"] }
+tokio = { version = "1.53", default-features = false, features = ["rt", "net", "time", "io-util", "sync", "macros"] }
+zeroize = "1.9"
+rpassword = "7.5"
+windows = "0.62.2"
 
 # core
 serde = { version = "1.0.229", features = ["derive"] }

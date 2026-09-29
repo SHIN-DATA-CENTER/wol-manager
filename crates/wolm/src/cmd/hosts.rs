@@ -2,12 +2,15 @@
 
 use serde::Serialize;
 use wol_core::i18n::{Header, Msg};
-use wol_core::netif::{self, InterfaceFilter};
-use wol_core::{EditBase, Error, Field, FieldIssue, Host, HostDraft, HostId, Settings, arp};
+use wol_core::secret;
+use wol_core::{EditBase, Error, Field, FieldIssue, Host, HostAddr, HostDraft, HostId, Settings};
 
+use super::mac;
+use super::remote::RemoteView;
+use crate::backend;
 use crate::cli::{AddArgs, EditArgs, HostFields, ListArgs, RemoveArgs, ShowArgs};
 use crate::ctx::Ctx;
-use crate::exit::{self, CmdResult};
+use crate::exit::{self, CmdResult, Failure};
 use crate::output::table::{Cell, key_values};
 use crate::output::{self, Table};
 use crate::text::Text;
@@ -32,6 +35,8 @@ pub struct HostView<'a> {
     effective_probe: &'static str,
     tcp_ports: &'a [u16],
     effective_tcp_ports: &'a [u16],
+    /// Remote management (`null` when not set up). Passwords are never part of it.
+    remote: Option<RemoteView<'a>>,
 }
 
 impl<'a> HostView<'a> {
@@ -53,6 +58,7 @@ impl<'a> HostView<'a> {
             effective_probe: h.effective_probe(s).as_str(),
             tcp_ports: &h.tcp_ports,
             effective_tcp_ports: h.effective_tcp_ports(s),
+            remote: RemoteView::of(h),
         }
     }
 }
@@ -206,6 +212,13 @@ fn describe(ctx: &Ctx, host: &Host, s: &Settings) -> Vec<String> {
             f(Field::TcpPorts),
             with_default(!host.tcp_ports.is_empty(), join(tcp)),
         ),
+        (
+            f(Field::RemoteKind),
+            match host.remote_kind() {
+                Some(k) => ctx.t(Msg::RemoteKindName(k)),
+                None => ctx.t(Msg::RemoteNone),
+            },
+        ),
     ];
     let mut lines = key_values(&pairs, 0);
     if let Some(n) = host.notes.as_deref().filter(|n| !n.trim().is_empty()) {
@@ -229,26 +242,44 @@ fn describe(ctx: &Ctx, host: &Host, s: &Settings) -> Vec<String> {
     lines
 }
 
-/// Copies the given flags into `d`. `existing_address` is the host's current address text
-/// (edit), used by `--arp` without `--address`.
+/// Copies the given flags into `d`. `existing` is the host being edited: its address is used
+/// by `--arp` without `--address`, and its remote management when ARP cannot reach it.
 fn apply_fields(
+    ctx: &Ctx,
     d: &mut HostDraft,
     f: &HostFields,
     settings: &Settings,
-    existing_address: Option<&str>,
-) -> Result<(), Error> {
+    existing: Option<&Host>,
+) -> Result<(), Failure> {
     if let Some(v) = &f.address {
         d.address = v.clone();
     }
     if f.arp {
-        let text = f.address.as_deref().or(existing_address).unwrap_or("");
-        let ip = util::parse_ipv4(Field::Address, text)?;
-        let mac = arp::mac_from_ip_with(
-            ip,
-            &netif::list(),
-            &InterfaceFilter::from_settings(&settings.wake),
-        )?;
-        d.mac = mac.to_string();
+        let current = existing.and_then(|h| h.address.as_ref().map(ToString::to_string));
+        let text = f.address.as_deref().or(current.as_deref()).unwrap_or("");
+        let addr = HostAddr::parse(text).map_err(|i| Error::invalid(Field::Address, i, text))?;
+        // ARP on the local network, else the host's remote management (VPN peers), else an
+        // explanation of why the MAC cannot be read, with the steps that work from here
+        // (review R1: `add` has no remote management yet).
+        d.mac = match mac::mac_for_draft(ctx, &addr, existing, settings) {
+            Ok(m) => m.to_string(),
+            Err(Failure::Core(e @ Error::MacNeedsRemote { .. })) => {
+                let name = crate::exit::shell_arg(match existing {
+                    Some(h) => &h.name,
+                    None if d.name.trim().is_empty() => "NAME",
+                    None => d.name.trim(),
+                });
+                let hint = match existing {
+                    None => ctx.tx(Text::AddVpnHostSteps {
+                        name: &name,
+                        address: text.trim(),
+                    }),
+                    Some(_) => ctx.tx(Text::EditVpnHostSteps { name: &name }),
+                };
+                return Err(Failure::WithHint(Box::new(Failure::Core(e)), hint));
+            }
+            Err(f) => return Err(f),
+        };
     }
     if let Some(v) = &f.mac {
         d.mac = v.clone();
@@ -289,7 +320,7 @@ pub fn add(ctx: &mut Ctx, a: &AddArgs) -> CmdResult {
     if a.fields.arp && a.fields.address.is_none() {
         return Err(Error::invalid(Field::Address, FieldIssue::Required, "").into());
     }
-    apply_fields(&mut d, &a.fields, &loaded.config.settings, None)?;
+    apply_fields(ctx, &mut d, &a.fields, &loaded.config.settings, None)?;
     if a.no_broadcast {
         d.broadcast = false;
     }
@@ -317,7 +348,7 @@ pub fn edit(ctx: &mut Ctx, a: &EditArgs) -> CmdResult {
     if let Some(n) = &a.name {
         d.name = n.clone();
     }
-    apply_fields(&mut d, &a.fields, &cfg.settings, Some(&base.draft.address))?;
+    apply_fields(ctx, &mut d, &a.fields, &cfg.settings, Some(host))?;
     if a.broadcast {
         d.broadcast = true;
     }
@@ -370,10 +401,17 @@ pub fn edit(ctx: &mut Ctx, a: &EditArgs) -> CmdResult {
     if !up.written {
         return unchanged(ctx, &up.config, base.id);
     }
+    let before = cfg.get(base.id);
     let host = up
         .config
         .get(up.value)
         .ok_or(Error::HostIdNotFound(up.value))?;
+    if let Some(before) = before {
+        // The user pointed the host at another management address: that address is confirmed
+        // for the current Windows sign-in like with `remote set` (other edits confirm nothing).
+        let moved = before.management_address() != host.management_address();
+        super::remote::after_connection_edit(ctx, before, host, moved);
+    }
     if ctx.json() {
         #[derive(Serialize)]
         struct Doc<'a> {
@@ -415,6 +453,14 @@ pub fn remove(ctx: &mut Ctx, a: &RemoveArgs) -> CmdResult {
         }
         Ok(removed)
     })?;
+    // The passwords of a removed host are useless and must not linger (after the save, so
+    // a failed save keeps them).
+    let secrets = backend::secret_store();
+    let secrets_deleted: usize = up
+        .value
+        .iter()
+        .map(|h| secret::forget_host(&secrets, h.id))
+        .sum();
     if ctx.json() {
         #[derive(Serialize)]
         struct Removed<'a> {
@@ -424,6 +470,7 @@ pub fn remove(ctx: &mut Ctx, a: &RemoveArgs) -> CmdResult {
         #[derive(Serialize)]
         struct Doc<'a> {
             removed: Vec<Removed<'a>>,
+            secrets_deleted: usize,
         }
         ctx.print_json(&Doc {
             removed: up
@@ -434,11 +481,17 @@ pub fn remove(ctx: &mut Ctx, a: &RemoveArgs) -> CmdResult {
                     name: &h.name,
                 })
                 .collect(),
+            secrets_deleted,
         });
     } else {
         for h in &up.value {
             ctx.info(&ctx.t(Msg::HostRemoved {
                 name: h.name.clone(),
+            }));
+        }
+        if secrets_deleted > 0 {
+            ctx.info(&ctx.tx(Text::SecretsDeleted {
+                count: secrets_deleted,
             }));
         }
     }

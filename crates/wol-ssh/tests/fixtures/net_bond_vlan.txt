@@ -1,0 +1,10 @@
+WOLM1 hdr os=Linux uid=0
+WOLM1 route bond0.20 0
+WOLM1 if bond0 mac=aa:bb:cc:00:00:03 type=1 kind=bond aat=1 oper=up carrier=1 lower=eno3,eno4 perm=- wol=-
+WOLM1 if bond0.20 mac=aa:bb:cc:00:00:03 type=1 kind=vlan aat=2 oper=up carrier=1 lower=bond0 perm=- wol=-
+WOLM1 if eno3 mac=aa:bb:cc:00:00:03 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=aa:bb:cc:00:00:03 wol=pumbg/g
+WOLM1 if eno4 mac=aa:bb:cc:00:00:03 type=1 kind=phys aat=3 oper=up carrier=1 lower=- perm=aa:bb:cc:00:00:04 wol=pumbg/g
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet bond0.20@bond0 10.0.20.2/24
+WOLM1 end

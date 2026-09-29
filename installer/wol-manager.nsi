@@ -136,6 +136,7 @@ Var FileInUse     ; message argument
 Var PathRc        ; exit code of wolm path
 Var UpgradeDirOk  ; result of CheckUpgradeDir (1 = go on)
 Var ChildRc       ; exit code (or start error) of the elevated child
+Var CopyTries     ; attempts of the file copy in SecProgram
 
 ; ---------------------------------------------------------------- pages
 !define MUI_ICON "${APP_ICON}"
@@ -232,6 +233,11 @@ Section "!$(SEC_PROGRAM)" SecProgram
 
   ; A silent install answers a file error prompt with its default, which would only set the
   ; error flag: check it so that a failed copy never ends with exit code 0.
+  ; Antivirus scanners briefly lock freshly written or executed files (e.g. the wolm.exe that
+  ; an upgrade just ran for "wolm path status"), so a failed copy is retried a few times.
+  StrCpy $CopyTries 0
+  copy_files:
+  IntOp $CopyTries $CopyTries + 1
   ClearErrors
   SetOutPath "$INSTDIR"
   File "${STAGE_DIR}\${GUI_EXE}"
@@ -241,7 +247,12 @@ Section "!$(SEC_PROGRAM)" SecProgram
   File "${STAGE_DIR}\${CLI_SUBDIR}\${CLI_EXE}"
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\${UNINSTALLER_EXE}"
+  ; ${Errors} clears the flag when tested, so decide everything inside one check.
   ${If} ${Errors}
+    ${If} $CopyTries < 5
+      Sleep 1000
+      Goto copy_files
+    ${EndIf}
     DetailPrint "$(MSG_FILES_FAILED)"
     MessageBox MB_OK|MB_ICONSTOP "$(MSG_FILES_FAILED)" /SD IDOK
     SetErrorLevel 2

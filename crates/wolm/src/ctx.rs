@@ -130,6 +130,13 @@ impl Ctx {
         if self.quiet() {
             return;
         }
+        self.warn_always(line);
+    }
+
+    /// A warning that is printed even with `-q` (with `--json` as one JSON line): what a
+    /// confirmation would have shown before something runs with root rights on a host, for
+    /// runs that skip the question with `--yes`.
+    pub fn warn_always(&self, line: &str) {
         if self.json() {
             #[derive(Serialize)]
             struct W<'a> {
@@ -153,19 +160,37 @@ impl Ctx {
         output::stdout_line(&json::to_pretty(value));
     }
 
-    /// Prints a failure on stderr (one JSON line with `--json`).
+    /// Prints a failure on stderr (one JSON line with `--json`), with its hint.
     pub fn report(&self, f: &Failure) {
+        let hint = f.hint(self.lang);
         if self.json() {
-            output::stderr_line(&json::error_line(
+            output::stderr_line(&json::error_line_with(
                 f.kind(),
                 &f.message(self.lang),
                 f.exit_code(),
+                hint.as_deref(),
+                f.host_key(),
             ));
         } else {
             let p = paint(output::ERROR, &self.tx(Text::ErrorPrefix));
             for line in f.lines(self.lang) {
                 output::stderr_line(&format!("{p} {line}"));
             }
+            if let Some(h) = hint {
+                let p = paint(output::NOTE, &self.tx(Text::HintPrefix));
+                output::stderr_line(&format!("{p} {h}"));
+            }
         }
+    }
+
+    /// `true` when questions can be asked (stdin is a console).
+    pub fn interactive(&self) -> bool {
+        crate::prompt::stdin_is_console()
+    }
+
+    /// A line of a confirmation question on stderr: shown even with `-q` / `--json`, because
+    /// the answer depends on it.
+    pub fn ask_line(&self, line: &str) {
+        output::stderr_line(line);
     }
 }

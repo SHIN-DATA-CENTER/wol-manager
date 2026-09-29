@@ -45,6 +45,16 @@ const UI_ICONS: &[UiIcon] = ui_icons![
     "globe" => "Navigation" / "Globe",
     "sun" => "Environment" / "Sun",
     "moon" => "Environment" / "Moon",
+    // v0.2 remote management
+    "restart" => "Arrow" / "Arrow_Reload_02",
+    "shutdown" => "Media" / "Stop_Circle",
+    "clock" => "Calendar" / "Clock",
+    "os-windows" => "System" / "Window",
+    "os-ssh" => "System" / "Window_Terminal",
+    "shield" => "Warning" / "Shield_Check",
+    "shield-warning" => "Warning" / "Shield_Warning",
+    "link" => "Interface" / "Link",
+    "remote" => "System" / "Devices",
 ];
 
 const fn art(property: &'static str, size: u32) -> ArtImage {

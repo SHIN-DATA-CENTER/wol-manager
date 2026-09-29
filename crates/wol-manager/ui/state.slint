@@ -9,7 +9,8 @@
 import {
     HostRow, HostStatus, ProbeVia, Toast, Notice, NoticeKind, OverlayKind, ConfirmKind,
     ConfirmRequest, EditorMode, FieldIssue, ArpStatus, InterfaceOption, StorageMode,
-    PortableBlock, PathMode, PathState,
+    PortableBlock, PathMode, PathState, RemoteKind, SudoMode, TestStatus, MacKind,
+    MacCandidateRow, HostKeyPrompt, PowerAction, PowerRequest,
 } from "types.slint";
 
 // =============================================================================================
@@ -39,8 +40,9 @@ export global AppState {
     /// True while a status round (F5 or periodic) is running.
     in property <bool> checking;
     /// Runs the status-dot pulse timer. Rust keeps it true only while the window is visible and
-    /// at least one host is checking or waking (otherwise the timer would wake the event loop
-    /// forever, also while the window is hidden in the notification area).
+    /// at least one host is checking, waking, restarting or shutting down (otherwise the timer
+    /// would wake the event loop forever, also while the window is hidden in the notification
+    /// area).
     in property <bool> animating;
     /// True when periodic status checks are off (gui.poll_interval_secs = 0).
     in property <bool> auto-check-off;
@@ -69,6 +71,18 @@ export global AppState {
     in-out property <bool> confirm-open;
     in-out property <ConfirmRequest> confirm;
 
+    // ---- v0.2 remote management dialogs (top layer, like the confirm dialog) --------------------
+    // At most one top-layer dialog (confirm, power, host key, MAC picker) is open at a time.
+    /// Power confirm dialog. Rust fills `power` and sets power-open; the UI clears power-open
+    /// before invoking power-accepted / power-cancelled.
+    in-out property <bool> power-open;
+    /// Request shown in the power dialog; the UI edits delay-secs / force / message.
+    in-out property <PowerRequest> power;
+    /// SSH host key dialog (unknown key: trust / cancel; mismatch: close / forget…). Rust fills
+    /// `hostkey` and sets hostkey-open; the UI clears hostkey-open before invoking a callback.
+    in-out property <bool> hostkey-open;
+    in property <HostKeyPrompt> hostkey;
+
     // ---- host actions (all by id) ----------------------------------------------------------------
     callback wake(id: string);
     /// Wake all hosts currently visible (after search / group filter). Rust shows ConfirmKind.wake-all.
@@ -84,6 +98,30 @@ export global AppState {
     callback delete-host(id: string);
     callback copy-mac(id: string);
     callback copy-address(id: string);
+
+    // ---- v0.2 remote management (all by id; the UI calls them only for a managed, idle host) ----
+    /// "Restart…": Rust fills `power` (action restart, settings defaults) and sets power-open.
+    callback restart-host(id: string);
+    /// "Shut down…": same with action shutdown.
+    callback shutdown-host(id: string);
+    /// "Cancel shutdown" (Windows hosts only): AbortSystemShutdown on a worker, result as toast.
+    callback abort-shutdown(id: string);
+    /// "Get boot time": fetch on a worker, then update HostRow.boot-text / boot-approx.
+    callback fetch-boot-time(id: string);
+    /// "Set up remote management…" (hosts without it): open the editor (mode edit) with
+    /// EditorState.remote-open = true.
+    callback setup-remote(id: string);
+    /// Power dialog result (`power-open` already false). The request carries the chosen options.
+    callback power-accepted(request: PowerRequest);
+    callback power-cancelled(request: PowerRequest);
+    /// Host key dialog results (`hostkey-open` already false).
+    /// trusted: pin prompt.key-line (editor test: into the editor draft; otherwise into the
+    /// host's config) and retry the operation that was interrupted.
+    callback hostkey-trusted(prompt: HostKeyPrompt);
+    /// Cancel / Close / Esc: abandon the interrupted operation.
+    callback hostkey-cancelled(prompt: HostKeyPrompt);
+    /// Mismatch only, "Forget pinned key…": show ConfirmKind.forget-host-key.
+    callback hostkey-forget(prompt: HostKeyPrompt);
 
     // ---- list filtering ------------------------------------------------------------------------------
     /// Search text changed (search-text already holds the new value).
@@ -174,15 +212,87 @@ export global EditorState {
 
     // ---- ARP lookup ----------------------------------------------------------------------------------
     in property <ArpStatus> arp-status: ArpStatus.idle;
+    /// v0.2: Rust text for arp-status failed (error detail) and needs-remote (explanation, e.g.
+    /// wol_core's MacNeedsRemote message); "" = none.
+    in property <string> arp-message;
+    /// v0.2: several adapters were found remotely: the MAC picker (top-layer dialog) lists them.
+    /// Rust fills mac-candidates (best first) and sets mac-picker-open; the UI closes it.
+    in property <[MacCandidateRow]> mac-candidates;
+    in-out property <bool> mac-picker-open;
+    /// Host name shown in the MAC picker text (usually `name`, data).
+    in property <string> mac-picker-host;
     /// True while Rust saves (store thread); disables Save.
     in property <bool> saving;
+
+    // ---- v0.2 remote management (collapsible section "Remote management") ----------------------
+    // Secrets: Rust NEVER writes a stored secret into these properties. The *-saved flags say that
+    // Credential Manager holds one; a typed value replaces it on save, "" keeps it, and the
+    // *-delete flags (set by the "Delete saved …" buttons, cleared by "Undo") delete it on save.
+    /// Section expanded. Rust opens it for managed hosts, for setup-remote(id) and when a remote
+    /// field fails on save.
+    in-out property <bool> remote-open;
+    in-out property <RemoteKind> remote-kind: RemoteKind.none;
+    /// Management address, "" = use `address`.
+    in-out property <string> remote-address;
+    /// Windows account ("" = the current Windows sign-in) or SSH login user ("" = root).
+    in-out property <string> remote-user;
+    /// Login password (Windows admin / SSH login) as typed, "" = keep the saved one.
+    in-out property <string> remote-password;
+    in property <bool> remote-password-saved;
+    in-out property <bool> remote-password-delete;
+    /// SSH port as typed, "" = 22.
+    in-out property <string> ssh-port;
+    /// Private key file ("" = password authentication).
+    in-out property <string> ssh-key-file;
+    in-out property <string> ssh-key-passphrase;
+    in property <bool> ssh-key-passphrase-saved;
+    in-out property <bool> ssh-key-passphrase-delete;
+    in-out property <SudoMode> ssh-sudo: SudoMode.auto;
+    /// Separate sudo password (SudoMode.separate only).
+    in-out property <string> ssh-sudo-password;
+    in property <bool> ssh-sudo-password-saved;
+    in-out property <bool> ssh-sudo-password-delete;
+    /// Pinned SSH host key ("" = none yet). Rust updates them when the user trusts a key during
+    /// "Test connection" (the key is then part of the draft and saved with the host).
+    in property <string> host-key-type;
+    in property <string> host-key-fingerprint;
+    /// "Forget" clicked: drop the pinned key on save (Undo clears it).
+    in-out property <bool> host-key-forget;
+    /// SSH: the host's own restart / shutdown commands (`remote.reboot_command` /
+    /// `shutdown_command`, set with `wolm remote set` or brought by an import; "" = the platform
+    /// default). They run with root rights, so the editor always shows them (read-only).
+    in property <string> reboot-command;
+    in property <string> shutdown-command;
+    /// "Use the default commands" clicked: both are removed on save (Undo clears it).
+    in-out property <bool> power-commands-reset;
+    in-out property <FieldIssue> remote-address-issue;
+    in-out property <FieldIssue> remote-user-issue;
+    in-out property <FieldIssue> ssh-port-issue;
+    /// "Test connection" state and result (Rust texts; data). The UI resets a shown result to
+    /// idle when a remote field is edited (it no longer applies).
+    in-out property <TestStatus> test-status: TestStatus.idle;
+    /// ok: e.g. "Windows 11 Pro" / "Debian GNU/Linux 12".
+    in property <string> test-os;
+    /// ok: boot text as in HostRow.boot-text ("" = unknown).
+    in property <string> test-boot;
+    /// ok: optional remark, e.g. "the user is not an administrator" ("" = none).
+    in property <string> test-note;
+    /// failed: translated error.
+    in property <string> test-error;
 
     /// Validate + save. On success Rust sets AppState.overlay = none; on failure it sets the
     /// *-issue properties (and advanced-open if needed) and keeps the editor open.
     callback save();
     /// "Get from IP": ARP lookup of `address` on a worker. Rust sets arp-status busy -> result and,
     /// when found, writes `mac` (and clears mac-issue).
+    /// v0.2: smart lookup (wol_core::macfind) with the draft's remote settings; several remote
+    /// candidates open the MAC picker.
     callback lookup-mac(address: string);
+    /// v0.2: MAC picker "Select". The UI has already written `mac` (+ mac-issue) and closed the
+    /// picker; Rust sets arp-status found.
+    callback mac-picked(candidate: MacCandidateRow);
+    /// v0.2: "Test connection" with the draft's remote settings (typed secrets, else saved ones).
+    callback test-connection();
 }
 
 // =============================================================================================
@@ -208,6 +318,9 @@ export global Validator {
     pure callback check-tcp-ports(text: string) -> FieldIssue;
     /// Enables "Get from IP" (ARP works for IPv4 only).
     pure callback is-ipv4(text: string) -> bool;
+    /// v0.2: remote user name ("" is fine). Windows: account, DOMAIN\user or user@domain;
+    /// SSH: login name without spaces. Returns InvalidUser (or ImeKana) otherwise.
+    pure callback check-remote-user(text: string, kind: RemoteKind) -> FieldIssue;
 }
 
 // =============================================================================================
@@ -215,7 +328,8 @@ export global Validator {
 // changed(key) with the config key (same names as `wolm config` / Settings::KEYS).
 // =============================================================================================
 export global SettingsState {
-    /// Page: 0 = General, 1 = Wake & status, 2 = Storage & command line, 3 = Advanced.
+    /// Page: 0 = General, 1 = Wake & status, 2 = Remote management (v0.2),
+    /// 3 = Storage & command line, 4 = Advanced.
     in-out property <int> page: 0;
 
     // ---- General ------------------------------------------------------------------------------------
@@ -250,6 +364,16 @@ export global SettingsState {
     in-out property <int> repeat: 3;                 // key "wake.repeat" (1..=10)
     in-out property <int> interval-ms: 100;          // key "wake.interval_ms" (0..=5000)
     in-out property <bool> include-virtual;          // key "wake.include_virtual"
+
+    // ---- Remote management (v0.2) ------------------------------------------------------------------
+    in-out property <int> remote-delay-secs: 30;             // key "remote.shutdown_delay_secs" (0..=600)
+    in-out property <bool> remote-force: true;               // key "remote.force_apps_closed"
+    in-out property <int> remote-restart-timeout-secs: 600;  // key "remote.restart_verify_timeout_secs" (30..=3600)
+    in-out property <int> remote-shutdown-timeout-secs: 300; // key "remote.shutdown_verify_timeout_secs" (30..=3600)
+    /// Seconds in the UI (1..=60); the config stores milliseconds: key "remote.connect_timeout_ms"
+    /// = value * 1000 (show round(ms / 1000), at least 1).
+    in-out property <int> remote-connect-timeout-secs: 5;
+    in-out property <bool> remote-auto-boot-time: true;      // key "remote.auto_boot_time"
 
     // ---- Storage & command line (storage mode / path: AppState.storage-mode / storage-path) -------
     /// Portable switch state (two-way). The UI flips it and invokes portable-toggled(on); Rust
@@ -289,6 +413,8 @@ export global AboutInfo {
     in property <bool> notices-available;
     in property <string> website-url: "https://github.com/SHIN-DATA-CENTER/wol-manager";
     in property <string> copyright: "© 2026 SHIN DATA CENTER";
+    /// v0.2: README section about remote management (settings page link).
+    in property <string> remote-help-url: "https://github.com/SHIN-DATA-CENTER/wol-manager#remote-management";
     /// Open THIRD-PARTY-NOTICES.txt.
     callback open-notices();
 }
@@ -297,10 +423,29 @@ export global AboutInfo {
 // Keyboard containment of the in-window dialogs (internal helper, not exported to Rust)
 // =============================================================================================
 export global ModalGate {
-    /// False while the confirm dialog is open. Every control of the editor / settings / about
-    /// overlays binds `enabled` to it, so that Tab can't reach them behind the confirm dialog
+    /// A dialog of the top layer is open: confirm, power, host key or (above the editor) the
+    /// MAC picker.
+    out property <bool> top-open: AppState.confirm-open || AppState.power-open || AppState.hostkey-open
+        || (AppState.overlay == OverlayKind.editor && EditorState.mac-picker-open);
+    /// False while a top-layer dialog is open. Every control of the editor / settings / about
+    /// overlays binds `enabled` to it, so that Tab can't reach them behind that dialog
     /// (the main view is likewise disabled through MainView.interactive).
-    out property <bool> overlay-enabled: !AppState.confirm-open;
+    out property <bool> overlay-enabled: !top-open;
+}
+
+// =============================================================================================
+// v0.2: which remote actions a host row allows (internal helper, not exported to Rust)
+// =============================================================================================
+export global RemoteRules {
+    /// Restart… / Shut down… / Get boot time: managed, nothing running, not already going down.
+    public pure function can-power(h: HostRow) -> bool {
+        return h.managed && h.remote-kind != RemoteKind.none && !h.busy-remote
+            && h.status != HostStatus.restarting && h.status != HostStatus.shutting-down;
+    }
+    /// Cancel shutdown: Windows only (AbortSystemShutdown also cancels a pending restart).
+    public pure function can-abort(h: HostRow) -> bool {
+        return h.managed && h.remote-kind == RemoteKind.windows && !h.busy-remote;
+    }
 }
 
 // =============================================================================================
@@ -322,7 +467,23 @@ export global Texts {
         if s == HostStatus.waking { return @tr("Waking…"); }
         if s == HostStatus.timeout { return @tr("No response"); }
         if s == HostStatus.not-monitored { return @tr("Not monitored"); }
+        if s == HostStatus.restarting { return @tr("Restarting…"); }
+        if s == HostStatus.shutting-down { return @tr("Shutting down…"); }
         return @tr("Unknown");
+    }
+
+    /// v0.2: RemoteKind -> short name (badge tooltip, editor, dialogs).
+    public pure function remote-kind(k: RemoteKind) -> string {
+        if k == RemoteKind.windows { return @tr("Windows"); }
+        if k == RemoteKind.ssh { return @tr("Linux (SSH)"); }
+        return @tr("None");
+    }
+
+    /// v0.2: MacKind -> text (MAC picker).
+    public pure function mac-kind(k: MacKind) -> string {
+        if k == MacKind.physical { return @tr("Wired"); }
+        if k == MacKind.wifi { return @tr("Wi-Fi"); }
+        return @tr("Other");
     }
 
     public pure function status-detail(h: HostRow) -> string {
@@ -339,6 +500,8 @@ export global Texts {
         if h.status == HostStatus.waking { return @tr("Magic packet sent. Waiting for the host to answer…"); }
         if h.status == HostStatus.timeout { return @tr("The host did not answer after the magic packet was sent."); }
         if h.status == HostStatus.checking { return @tr("Checking whether the host answers…"); }
+        if h.status == HostStatus.restarting { return @tr("Restart requested. Waiting for the host to start again…"); }
+        if h.status == HostStatus.shutting-down { return @tr("Shutdown requested. Waiting for the host to stop answering…"); }
         if h.status == HostStatus.not-monitored {
             return h.address == "" ? @tr("No address is set, so the status can't be checked.") : @tr("Status checks are turned off for this host.");
         }
@@ -359,6 +522,9 @@ export global Texts {
         if i == FieldIssue.name-looks-like-mac { return @tr("The name can't be a MAC address."); }
         if i == FieldIssue.name-too-long { return @tr("Use 64 characters or fewer."); }
         if i == FieldIssue.ime-kana { return @tr("Contains kana. Turn off the IME and type it again."); }
+        if i == FieldIssue.invalid-user { return @tr("This user name contains characters that can't be used."); }
+        if i == FieldIssue.invalid-command { return @tr("The command contains characters that can't be used, or it is too long."); }
+        if i == FieldIssue.invalid-host-key { return @tr("The host key is not an OpenSSH public key such as ssh-ed25519 AAAA…"); }
         return "";
     }
 

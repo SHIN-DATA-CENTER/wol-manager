@@ -15,7 +15,10 @@
 //! | [`netif`] | Network interface enumeration and selection (pure `select` / `explain`) |
 //! | [`send`] | Wake planning (pure `plan`) and sending (`execute`, `wake`, `wake_many`) |
 //! | [`probe`] | Online checks: ICMP (IcmpSendEcho) and TCP connect |
-//! | [`arp`] | MAC lookup from an IPv4 address (SendARP) |
+//! | [`arp`] | MAC lookup from an IPv4 address (SendARP, local LAN only) |
+//! | [`macfind`] | Smart "MAC from IP": ARP on the LAN, else the host's remote management (v0.2.0) |
+//! | [`remote`] | Remote management: restart / shutdown / boot time / MAC via Windows or SSH (v0.2.0) |
+//! | [`secret`] | Per-host passwords in Windows Credential Manager (v0.2.0) |
 //! | [`store`] | Settings location, locked read-modify-write of `config.toml`, portable mode |
 //! | [`pathenv`] | Adding / removing the CLI folder to / from the user or machine `PATH` |
 //! | [`i18n`] | Japanese / English runtime messages ([`i18n::Msg`]) |
@@ -38,21 +41,24 @@ pub mod error;
 pub mod i18n;
 pub mod instance;
 pub mod mac;
+pub mod macfind;
 pub mod magic;
 pub mod model;
 pub mod netif;
 pub mod normalize;
 pub mod pathenv;
 pub mod probe;
+pub mod remote;
+pub mod secret;
 pub mod send;
 pub mod store;
 pub mod sys;
 pub mod transfer;
 
 pub use addr::{HostAddr, Target};
-pub use error::{Error, ErrorKind, Field, FieldError, FieldIssue, Result};
+pub use error::{Error, ErrorKind, Field, FieldError, FieldIssue, HostKeyProblem, Result};
 pub use mac::{MacAddr, SecureOn};
-pub use model::{Config, EditBase, Host, HostDraft, HostId, Settings};
+pub use model::{Config, EditBase, Host, HostDraft, HostId, RemoteConfig, RemoteKind, Settings};
 
 #[cfg(test)]
 mod thread_safety {
@@ -76,5 +82,30 @@ mod thread_safety {
         send::<Box<dyn crate::pathenv::EnvBackend>>();
         sync::<crate::pathenv::RegistryBackend>();
         send::<crate::i18n::Msg>();
+        // v0.2.0 remote management: shared with worker threads.
+        send::<crate::remote::RemoteClient>();
+        sync::<crate::remote::RemoteClient>();
+        send::<crate::secret::SecretStore>();
+        sync::<crate::secret::SecretStore>();
+        send::<crate::remote::BootInfo>();
+        send::<crate::remote::MacCandidate>();
+        send::<crate::remote::ConnInfo>();
+        send::<crate::remote::PowerOutcome>();
+        send::<crate::remote::RestartVerify>();
+        send::<crate::remote::ShutdownVerify>();
+        send::<crate::remote::VerifyTick>();
+        send::<crate::remote::SecretOverrides>();
+        send::<crate::macfind::MacFound>();
+        send::<crate::model::RemoteDraft>();
+    }
+
+    /// Remote failures are boxed so that `Error` stays small (`clippy::result_large_err`).
+    #[test]
+    fn error_stays_small() {
+        assert!(
+            std::mem::size_of::<crate::Error>() <= 128,
+            "{}",
+            std::mem::size_of::<crate::Error>()
+        );
     }
 }

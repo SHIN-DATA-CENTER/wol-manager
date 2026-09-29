@@ -150,6 +150,37 @@ fn print_summary(ctx: &Ctx, s: &ImportSummary) {
     for n in &s.removed {
         ctx.out(&output::paint(output::RED, &format!("- {n}")));
     }
+    // Remote management: saved passwords of re-pointed hosts are not used any more, and a file
+    // never replaces the trusted SSH host key of the same server.
+    if !s.remote_changed.is_empty() {
+        ctx.warn(&ctx.tx(Text::ImportRemoteChanged {
+            names: &s.remote_changed.join(", "),
+        }));
+    }
+    if !s.host_keys_kept.is_empty() {
+        ctx.note(&ctx.tx(Text::ImportHostKeysKept {
+            names: &s.host_keys_kept.join(", "),
+        }));
+    }
+    // A re-pointed host gets no key from the file: its fingerprint is confirmed on the next
+    // connection (review R6).
+    if !s.host_keys_cleared.is_empty() {
+        ctx.warn(&ctx.tx(Text::ImportHostKeysCleared {
+            names: &s.host_keys_cleared.join(", "),
+        }));
+    }
+    // SSH power commands run with root rights: a file never changes them on existing hosts,
+    // and added hosts that bring some are pointed out (cross review X1).
+    if !s.commands_kept.is_empty() {
+        ctx.warn(&ctx.tx(Text::ImportCommandsKept {
+            names: &s.commands_kept.join(", "),
+        }));
+    }
+    if !s.commands_imported.is_empty() {
+        ctx.warn(&ctx.tx(Text::ImportCommandsImported {
+            names: &s.commands_imported.join(", "),
+        }));
+    }
     for sk in &s.skipped {
         ctx.warn(&ctx.tx(Text::ImportSkipped {
             location: &location_text(ctx, &sk.location),
@@ -237,7 +268,11 @@ pub fn import(ctx: &mut Ctx, a: &ImportArgs) -> CmdResult {
     }
     // Records can also be refused while they are applied (a name used twice).
     let mut refused: Option<ImportSkip> = None;
+    // The hosts as they were when the import started (under the lock): removed hosts, and
+    // hosts whose remote management the file removed, lose their stored passwords.
+    let mut before: Option<wol_core::Config> = None;
     let result = store.update(|c| {
+        before = Some(c.clone());
         let summary = transfer::apply_import(c, &data, &opts)?;
         if !a.skip_invalid
             && let Some(sk) = summary.skipped.first()
@@ -256,6 +291,18 @@ pub fn import(ctx: &mut Ctx, a: &ImportArgs) -> CmdResult {
         (Err(_), Some(sk)) => return Err(invalid_record(ctx, &sk.location, &sk.error)),
         (Err(e), None) => return Err(e.into()),
     };
+    if up.written
+        && let Some(before) = &before
+    {
+        let n = wol_core::secret::forget_removed_hosts(
+            &crate::backend::secret_store(),
+            before,
+            &up.config,
+        );
+        if n > 0 {
+            ctx.info(&ctx.tx(Text::SecretsDeleted { count: n }));
+        }
+    }
     if ctx.json() {
         ctx.print_json(&ImportDoc {
             dry_run: false,

@@ -51,6 +51,16 @@ WoL Manager は、Wake on LAN のマジックパケットで PC を起動する�
     - 読み取り専用の場所でも起動と閲覧はできますが、保存しようとするとエラーになります。
     - インストール版のフォルダー（uninstall.exe があるフォルダー）ではマーカーは無視されます。
 
+■ リモート管理とパスワード（0.2.0 以降）
+  登録したホストの再起動・シャットダウン・起動時刻の取得と、VPN 越しのホストの
+  MAC アドレスの取得ができます（ホストの編集画面の「リモート管理」、または
+  bin\wolm.exe remote set）。前提条件などは GitHub の README を参照してください。
+  保存したパスワードは、この PC の Windows 資格情報マネージャー（この Windows
+  ユーザー専用）に保存され、data\ フォルダー・config.toml・エクスポートには
+  含まれません。USB メモリなどで別の PC に持って行った場合は、パスワードを
+  入力し直してください。パスワードを保存していない Windows のホストに現在の
+  Windows サインインを使うことの確認も、この PC にだけ記録されます。
+
 ■ wolm コマンドを PATH に追加する
   このフォルダーで次を実行します。
     bin\wolm.exe path add --scope user
@@ -142,6 +152,18 @@ GUI (wol-manager.exe) and from the command line (wolm).
     - In a read-only location WoL Manager starts and shows the hosts, but saving
       reports an error.
     - The marker is ignored in an installed copy (a folder with uninstall.exe).
+
+* Remote management and passwords (0.2.0 and later)
+  Registered hosts can be restarted, shut down and asked for their boot
+  time, and hosts behind a VPN report the MAC address of their physical
+  adapter (host editor -> "Remote management", or bin\wolm.exe remote set).
+  See the README on GitHub for the requirements.
+  Saved passwords are kept in this PC's Windows Credential Manager (for this
+  Windows user only), never in the data\ folder, config.toml or exports.
+  After taking the portable folder to another PC (e.g. on a USB stick),
+  enter the passwords again. The confirmation to use your current Windows
+  sign-in for a Windows host without a saved password is kept on this PC
+  only as well.
 
 * Adding the wolm command to PATH
   Run this in the extracted folder:

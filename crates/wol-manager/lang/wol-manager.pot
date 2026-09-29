@@ -1,8 +1,8 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-09-29 01:36+0000\n"
+"Project-Id-Version: wol-manager VERSION\n"
+"POT-Creation-Date: 2026-09-29 11:09+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,128 +12,161 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: ui/app.slint:27
+#: ui/app.slint:31
 msgid "WoL Manager (portable)"
 msgstr ""
 
-#: ui/app.slint:76
+#: ui/app.slint:82
 msgid "File"
 msgstr ""
 
-#: ui/app.slint:78
+#: ui/app.slint:84
 msgid "New host…"
 msgstr ""
 
-#: ui/app.slint:84 ui/tray.slint:48
+#: ui/app.slint:90 ui/tray.slint:48
 msgid "Settings…"
 msgstr ""
 
-#: ui/app.slint:90
+#: ui/app.slint:96
 msgid "Open settings folder"
 msgstr ""
 
-#: ui/app.slint:95
+#: ui/app.slint:101
 msgid "Close window"
 msgstr ""
 
-#: ui/app.slint:100 ui/tray.slint:53
+#: ui/app.slint:106 ui/tray.slint:53
 msgid "Exit"
 msgstr ""
 
-#: ui/app.slint:106
+#: ui/app.slint:112 ui/overlays/hostkey.slint:94
 msgid "Host"
 msgstr ""
 
-#: ui/app.slint:108 ui/host-row.slint:187 ui/main-view.slint:449
-#: ui/app.slint:108 ui/host-row.slint:187 ui/main-view.slint:449
+#: ui/app.slint:114 ui/host-row.slint:233 ui/main-view.slint:451
+#: ui/app.slint:114 ui/host-row.slint:233 ui/main-view.slint:451
 msgid "Wake"
 msgstr ""
 
-#: ui/app.slint:114 ui/main-view.slint:453
+#: ui/app.slint:120 ui/main-view.slint:455
 msgid "Edit…"
 msgstr ""
 
-#: ui/app.slint:119 ui/main-view.slint:457
+#: ui/app.slint:125 ui/main-view.slint:459
 msgid "Duplicate"
 msgstr ""
 
-#: ui/app.slint:125 ui/main-view.slint:462
+#: ui/app.slint:131 ui/main-view.slint:491
 msgid "Copy MAC address"
 msgstr ""
 
-#: ui/app.slint:130 ui/main-view.slint:466
+#: ui/app.slint:136 ui/main-view.slint:495
 msgid "Copy address"
 msgstr ""
 
-#: ui/app.slint:135 ui/main-view.slint:472
+#: ui/app.slint:141 ui/main-view.slint:501
 msgid "Delete…"
 msgstr ""
 
-#: ui/app.slint:141
+#: ui/app.slint:148 ui/main-view.slint:466
+msgid "Restart…"
+msgstr ""
+
+#: ui/app.slint:153 ui/main-view.slint:471
+msgid "Shut down…"
+msgstr ""
+
+#: ui/app.slint:158 ui/main-view.slint:476
+msgid "Cancel shutdown"
+msgstr ""
+
+#: ui/app.slint:163 ui/main-view.slint:481
+msgid "Get boot time"
+msgstr ""
+
+#: ui/app.slint:168 ui/main-view.slint:486
+msgid "Set up remote management…"
+msgstr ""
+
+#: ui/app.slint:174
 msgid "Wake all visible…"
 msgstr ""
 
-#: ui/app.slint:147
+#: ui/app.slint:180
 msgid "Refresh status"
 msgstr ""
 
-#: ui/app.slint:154
+#: ui/app.slint:187
 msgid "View"
 msgstr ""
 
-#: ui/app.slint:156
+#: ui/app.slint:189
 msgid "Search"
 msgstr ""
 
-#: ui/app.slint:162 ui/main-view.slint:45 ui/overlays/host-editor.slint:297
+#: ui/app.slint:195 ui/main-view.slint:45 ui/overlays/host-editor.slint:456
 msgid "Group"
 msgstr ""
 
-#: ui/app.slint:165 ui/main-view.slint:73
+#: ui/app.slint:198 ui/main-view.slint:73
 msgid "All groups"
 msgstr ""
 
-#: ui/app.slint:184
+#: ui/app.slint:217
 msgid "Help"
 msgstr ""
 
-#: ui/app.slint:186
+#: ui/app.slint:219
 msgid "Command line (wolm)…"
 msgstr ""
 
-#: ui/app.slint:194 ui/overlays/about.slint:98
+#: ui/app.slint:227 ui/overlays/about.slint:98
 msgid "Website"
 msgstr ""
 
-#: ui/app.slint:199 ui/overlays/about.slint:20
+#: ui/app.slint:232 ui/overlays/about.slint:20
 msgid "About WoL Manager"
 msgstr ""
 
-#: ui/host-row.slint:42
+#: ui/host-row.slint:13
+msgid "Remote management: {0}"
+msgstr ""
+
+#: ui/host-row.slint:62
 msgid "Status"
 msgstr ""
 
-#: ui/host-row.slint:52 ui/overlays/host-editor.slint:227
+#: ui/host-row.slint:72 ui/overlays/host-editor.slint:371
 msgid "Name"
 msgstr ""
 
-#: ui/host-row.slint:62 ui/overlays/host-editor.slint:241
+#: ui/host-row.slint:82 ui/overlays/host-editor.slint:385
 msgid "MAC address"
 msgstr ""
 
-#: ui/host-row.slint:72 ui/overlays/host-editor.slint:282
+#: ui/host-row.slint:92 ui/overlays/host-editor.slint:441
+#: ui/host-row.slint:92 ui/overlays/host-editor.slint:441
 msgid "Address"
 msgstr ""
 
-#: ui/host-row.slint:188
+#: ui/host-row.slint:119
+msgid "{0} (approx.)"
+msgstr ""
+
+#: ui/host-row.slint:138
+msgid "Remote operation running"
+msgstr ""
+
+#: ui/host-row.slint:234
 msgid "Wake {0}"
 msgstr ""
 
-#: ui/host-row.slint:201
+#: ui/host-row.slint:247
 msgid "More actions"
 msgstr ""
 
-#: ui/host-row.slint:202
+#: ui/host-row.slint:248
 msgid "More actions for {0}"
 msgstr ""
 
@@ -188,7 +221,7 @@ msgstr ""
 msgid "Reload"
 msgstr ""
 
-#: ui/main-view.slint:32 ui/overlays/settings.slint:435
+#: ui/main-view.slint:32 ui/overlays/settings.slint:628
 msgid "Open folder"
 msgstr ""
 
@@ -205,8 +238,8 @@ msgstr ""
 msgid "Add a computer by its MAC address to wake it over the network."
 msgstr ""
 
-#: ui/main-view.slint:127 ui/main-view.slint:377
-#: ui/main-view.slint:127 ui/main-view.slint:377
+#: ui/main-view.slint:127 ui/main-view.slint:379
+#: ui/main-view.slint:127 ui/main-view.slint:379
 msgid "Add host"
 msgstr ""
 
@@ -252,15 +285,15 @@ msgstr ""
 msgid "Auto check off"
 msgstr ""
 
-#: ui/main-view.slint:385
+#: ui/main-view.slint:387
 msgid "Refresh"
 msgstr ""
 
-#: ui/main-view.slint:396
+#: ui/main-view.slint:398
 msgid "Search hosts (Ctrl+F)"
 msgstr ""
 
-#: ui/main-view.slint:425
+#: ui/main-view.slint:427
 msgid "Settings (Ctrl+,)"
 msgstr ""
 
@@ -268,7 +301,7 @@ msgstr ""
 msgid "Version {0}"
 msgstr ""
 
-#: ui/overlays/about.slint:65 ui/state.slint:366
+#: ui/overlays/about.slint:65 ui/state.slint:532
 msgid "Portable"
 msgstr ""
 
@@ -324,7 +357,8 @@ msgstr ""
 msgid "Third-party licenses"
 msgstr ""
 
-#: ui/overlays/about.slint:164 ui/widgets.slint:576
+#: ui/overlays/about.slint:164 ui/overlays/hostkey.slint:170
+#: ui/overlays/about.slint:164 ui/overlays/hostkey.slint:170
 msgid "Close"
 msgstr ""
 
@@ -349,237 +383,686 @@ msgid "Replace the existing data folder?"
 msgstr ""
 
 #: ui/overlays/confirm.slint:21
+msgid "Forget the trusted host key?"
+msgstr ""
+
+#: ui/overlays/confirm.slint:22
 msgid "Save as a new host?"
 msgstr ""
 
-#: ui/overlays/confirm.slint:30
+#: ui/overlays/confirm.slint:32
 msgid "“{0}” will be removed from the list. This can't be undone."
 msgstr ""
 
-#: ui/overlays/confirm.slint:31
+#: ui/overlays/confirm.slint:33
 msgid "A magic packet will be sent to {n} host that is shown in the list."
 msgid_plural ""
 "Magic packets will be sent to the {n} hosts that are shown in the list."
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/overlays/confirm.slint:32
+#: ui/overlays/confirm.slint:34
 msgid ""
 "Settings will be stored in the following folder next to wol-manager.exe. The "
 "file wol-manager.portable marks this copy as portable."
 msgstr ""
 
-#: ui/overlays/confirm.slint:33
+#: ui/overlays/confirm.slint:35
 msgid ""
 "Settings will be stored in AppData again. The data folder next to wol-"
 "manager.exe is kept."
 msgstr ""
 
-#: ui/overlays/confirm.slint:34
+#: ui/overlays/confirm.slint:36
 msgid ""
 "A data folder with settings already exists here. Replace it with the current "
 "settings, or keep using the existing settings?"
 msgstr ""
 
-#: ui/overlays/confirm.slint:35
+#: ui/overlays/confirm.slint:37
+msgid ""
+"The next time WoL Manager connects to “{0}”, it will ask you to check "
+"the host key again. Do this only if you know why the key changed, for "
+"example because the host was reinstalled."
+msgstr ""
+
+#: ui/overlays/confirm.slint:38
 msgid ""
 "“{0}” was deleted by another program while you were editing it. Save it "
 "as a new host?"
 msgstr ""
 
-#: ui/overlays/confirm.slint:37
+#: ui/overlays/confirm.slint:40 ui/overlays/host-editor.slint:56
 msgid "Delete"
 msgstr ""
 
-#: ui/overlays/confirm.slint:39
+#: ui/overlays/confirm.slint:42
 msgid "Switch"
 msgstr ""
 
-#: ui/overlays/confirm.slint:40
+#: ui/overlays/confirm.slint:43
 msgid "Turn off"
 msgstr ""
 
-#: ui/overlays/confirm.slint:41
+#: ui/overlays/confirm.slint:44
 msgid "Replace"
 msgstr ""
 
-#: ui/overlays/confirm.slint:42
+#: ui/overlays/confirm.slint:45 ui/overlays/host-editor.slint:792
+msgid "Forget"
+msgstr ""
+
+#: ui/overlays/confirm.slint:46
 msgid "Save as new"
 msgstr ""
 
-#: ui/overlays/confirm.slint:79
+#: ui/overlays/confirm.slint:91
 msgid "Copy the current settings"
 msgstr ""
 
-#: ui/overlays/confirm.slint:84
+#: ui/overlays/confirm.slint:96
 msgid "Hosts that are already online are included."
 msgstr ""
 
-#: ui/overlays/confirm.slint:97
+#: ui/overlays/confirm.slint:109
 msgid "Keep existing"
 msgstr ""
 
-#: ui/overlays/confirm.slint:102 ui/overlays/host-editor.slint:521
+#: ui/overlays/confirm.slint:114 ui/overlays/host-editor.slint:1129
+#: ui/overlays/confirm.slint:114 ui/overlays/host-editor.slint:1129 ui/overlays/mac-picker.slint:264
+#: ui/overlays/confirm.slint:114 ui/overlays/host-editor.slint:1129 ui/overlays/mac-picker.slint:264
 msgid "Cancel"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:27
+#: ui/overlays/host-editor.slint:43
+msgid ""
+"The saved value is deleted when you save the host. Choose Undo to keep it."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:44
+msgid ""
+"Saved. Leave the field empty to keep it, or type a new one to replace it."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:49
+msgid "Deleted on save"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:50
+msgid "Saved"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:56 ui/overlays/host-editor.slint:792
+#: ui/overlays/host-editor.slint:56 ui/overlays/host-editor.slint:792
+msgid "Undo"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:98
 msgid "Keep current pinning ({n} adapter)"
 msgid_plural "Keep current pinning ({n} adapters)"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/overlays/host-editor.slint:31 ui/overlays/host-editor.slint:57
+#: ui/overlays/host-editor.slint:102 ui/overlays/host-editor.slint:128
 msgid "Automatic (all suitable adapters)"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:167
+#: ui/overlays/host-editor.slint:239
 msgid "Edit host"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:168
+#: ui/overlays/host-editor.slint:240
 msgid "Duplicate host"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:234
+#: ui/overlays/host-editor.slint:378
 msgid "e.g. Office PC"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:244
+#: ui/overlays/host-editor.slint:388
 msgid "Found the MAC address of this IP address."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:258
+#: ui/overlays/host-editor.slint:402
 msgid "Get from IP"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:271
+#: ui/overlays/host-editor.slint:415
 msgid "No device answered at this IP address. Make sure it is on and try again."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:274
+#: ui/overlays/host-editor.slint:418
 msgid "“Get from IP” only works for addresses in a local subnet of this PC."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:277
+#: ui/overlays/host-editor.slint:423
 msgid "The MAC address could not be looked up."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:284
+#: ui/overlays/host-editor.slint:430
+msgid "The MAC address can't be looked up with ARP"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:432
+msgid "Set up remote management"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:443
 msgid "IPv4 address or host name. Used for status checks and “Get from IP”."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:290
+#: ui/overlays/host-editor.slint:449
 msgid "e.g. 192.168.1.10 or nas.local"
 msgstr ""
 
 #. "" = the default ports of Settings > Wake & status.
-#: ui/overlays/host-editor.slint:304 ui/overlays/host-editor.slint:501
-#: ui/overlays/host-editor.slint:304 ui/overlays/host-editor.slint:501
+#: ui/overlays/host-editor.slint:463 ui/overlays/host-editor.slint:555
+#: ui/overlays/host-editor.slint:463 ui/overlays/host-editor.slint:555 ui/overlays/host-editor.slint:1109
+#: ui/overlays/host-editor.slint:463 ui/overlays/host-editor.slint:555 ui/overlays/host-editor.slint:1109 ui/state.slint:479
 msgid "None"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:317
+#: ui/overlays/host-editor.slint:476
 msgid "Choose an existing group"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:363
+#: ui/overlays/host-editor.slint:522
 msgid "Notes"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:368
+#: ui/overlays/host-editor.slint:527 ui/overlays/power.slint:141
 msgid "Optional"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:374
+#: ui/overlays/host-editor.slint:534 ui/overlays/settings.slint:858
+msgid "Remote management"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:536
+msgid "Restart, shut down and boot time over Windows remote management or SSH"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:551
+msgid "Type"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:555 ui/state.slint:477
+msgid "Windows"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:555 ui/state.slint:478
+msgid "Linux (SSH)"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:567
+msgid "Management address"
+msgstr ""
+
+#. "" = the host's address.
+#: ui/overlays/host-editor.slint:575
+msgid "Same as Address"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:587
+msgid ""
+"With remote management, WoL Manager can restart and shut down this host, "
+"show when it was started, and find its MAC address even over a VPN."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:595
+msgid ""
+"When you save, the remote management settings of this host are removed, "
+"including its saved passwords and its trusted host key."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:603
+msgid "User name"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:610
+msgid "Current Windows user"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:620
+msgid "Password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:625
+msgid "Not needed with a key file"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:625 ui/overlays/host-editor.slint:729
+msgid "Not saved"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:626
+msgid "Delete saved password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:627
+msgid "Keep the saved password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:639 ui/overlays/host-editor.slint:1016
+msgid "Port"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:657
+msgid "Private key file"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:663
+msgid "Optional, e.g. C:\\Users\\me\\.ssh\\id_ed25519"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:673
+msgid "Key passphrase"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:678
+msgid "Only with a key file"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:679
+msgid "Delete saved passphrase"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:680
+msgid "Keep the saved passphrase"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:686
+msgid "Administrator rights (sudo)"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:691
+msgid "Automatic"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:692
+msgid "Log in as root (no sudo)"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:693
+msgid "sudo without a password (NOPASSWD)"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:694
+msgid "sudo with the login password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:695
+msgid "sudo with a separate password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:720
+msgid ""
+"The saved sudo password is deleted when you save, because this sudo method "
+"doesn't use it."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:724
+msgid "sudo password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:730
+msgid "Delete saved sudo password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:731
+msgid "Keep the saved sudo password"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:738
+msgid "Host key"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:776
+msgid "This key will be forgotten when you save."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:784
+msgid ""
+"Not trusted yet. On the first connection you check the fingerprint and "
+"decide whether to trust it."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:793
+msgid "Keep the trusted host key"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:793
+msgid "Forget the trusted host key"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:808
+msgid "Own restart / shutdown commands"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:833 ui/overlays/power.slint:181
+msgid "Restart"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:840 ui/overlays/power.slint:181
+msgid "Shut down"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:849
+msgid "The platform's default commands are used again when you save."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:850
+msgid ""
+"These run with root rights instead of the platform's commands. They can only "
+"be changed with wolm remote set."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:858
+msgid "Use the defaults"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:859
+msgid "Keep the host's own commands"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:859
+msgid "Use the platform's default commands"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:874
+msgid ""
+"Use an administrator account of that PC. It must allow File and Printer "
+"Sharing (SMB) from this PC, also over a VPN. For local accounts, Windows may "
+"deny remote administration (UAC remote restrictions). See the README for the "
+"setup."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:879
+msgid ""
+"Log in as root or as a user who can use sudo. Restarting and shutting down "
+"need root rights."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:886
+msgid ""
+"Passwords are saved in Windows Credential Manager when you save the host, "
+"never in config.toml. Leave a saved password empty to keep it."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:897
+msgid "Test connection"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:910
+msgid "Connecting…"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:922 ui/overlays/host-editor.slint:937
+msgid "Connected"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:937
+msgid "Connected: {0}"
+msgstr ""
+
+#: ui/overlays/host-editor.slint:975
+msgid "The connection failed."
+msgstr ""
+
+#: ui/overlays/host-editor.slint:982
 msgid "Advanced settings"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:375
+#: ui/overlays/host-editor.slint:983
 msgid "Broadcast, extra targets, port, network adapter, SecureOn, status check"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:384
+#: ui/overlays/host-editor.slint:992
 msgid "Send to the broadcast address of each network adapter"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:390
+#: ui/overlays/host-editor.slint:998
 msgid "Additional targets"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:392
+#: ui/overlays/host-editor.slint:1000
 msgid ""
 "One per line, e.g. 192.168.20.255 or wol-relay.example.lan:9. Needed for "
 "other subnets."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:408
-msgid "Port"
-msgstr ""
-
 #. "" = the default ports of Settings > Wake & status.
-#: ui/overlays/host-editor.slint:416 ui/overlays/host-editor.slint:481
-#: ui/overlays/host-editor.slint:416 ui/overlays/host-editor.slint:481
+#: ui/overlays/host-editor.slint:1024 ui/overlays/host-editor.slint:1089
+#: ui/overlays/host-editor.slint:1024 ui/overlays/host-editor.slint:1089
 msgid "Default ({0})"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:423
+#: ui/overlays/host-editor.slint:1031
 msgid "Network adapter"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:429
+#: ui/overlays/host-editor.slint:1037
 msgid ""
 "A pinned adapter is not present on this PC. No packet is sent through it."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:435
+#: ui/overlays/host-editor.slint:1043
 msgid "SecureOn password"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:451
+#: ui/overlays/host-editor.slint:1059
 msgid "Not used"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:465
+#: ui/overlays/host-editor.slint:1073
 msgid ""
 "Saved as plain text in config.toml. Only needed if the network card requires "
 "it."
 msgstr ""
 
-#: ui/overlays/host-editor.slint:475
+#: ui/overlays/host-editor.slint:1083
 msgid "Status check"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:482 ui/overlays/settings.slint:249
-#: ui/overlays/host-editor.slint:482 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1090 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1090 ui/overlays/settings.slint:249
 msgid "Automatic (ping, then TCP)"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:483 ui/overlays/settings.slint:249
-#: ui/overlays/host-editor.slint:483 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1091 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1091 ui/overlays/settings.slint:249
 msgid "Ping (ICMP)"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:484 ui/overlays/settings.slint:249
-#: ui/overlays/host-editor.slint:484 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1092 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1092 ui/overlays/settings.slint:249
 msgid "TCP port"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:485 ui/overlays/settings.slint:249
-#: ui/overlays/host-editor.slint:485 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1093 ui/overlays/settings.slint:249
+#: ui/overlays/host-editor.slint:1093 ui/overlays/settings.slint:249
 msgid "Don't check"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:492 ui/overlays/settings.slint:255
+#: ui/overlays/host-editor.slint:1100 ui/overlays/settings.slint:255
 msgid "TCP ports"
 msgstr ""
 
-#: ui/overlays/host-editor.slint:514
+#: ui/overlays/host-editor.slint:1122
 msgid "Save"
 msgstr ""
 
-#: ui/overlays/modal.slint:114
+#: ui/overlays/hostkey.slint:28
+msgid "The host key has changed"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:28
+msgid "Trust this host key?"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:71
+msgid ""
+"WoL Manager is connecting to “{0}” over SSH for the first time. Make "
+"sure that the fingerprint below belongs to this host before you trust it."
+msgstr ""
+
+#: ui/overlays/hostkey.slint:79
+msgid "The connection was stopped."
+msgstr ""
+
+#: ui/overlays/hostkey.slint:80
+msgid ""
+"“{0}” sent a different key than the trusted one. The host may have been "
+"reinstalled, or someone may be intercepting the connection."
+msgstr ""
+
+#: ui/overlays/hostkey.slint:103
+msgid "Key type"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:109
+msgid "Fingerprint"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:117
+msgid "Trusted key"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:122
+msgid "Received key"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:135
+msgid "To see the host's current key, run this command on the host:"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:136
+msgid "To check it, run this command on the host and compare the SHA256 value:"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:151
+msgid ""
+"If you know why the key changed, forget the trusted key. You will be asked "
+"to check the new key on the next connection."
+msgstr ""
+
+#: ui/overlays/hostkey.slint:159
+msgid "Forget trusted key…"
+msgstr ""
+
+#: ui/overlays/hostkey.slint:164
+msgid "Trust"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:37 ui/overlays/mac-picker.slint:92
+msgid "Default route"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:38 ui/overlays/mac-picker.slint:96
+msgid "Recommended"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:39 ui/overlays/mac-picker.slint:102
+msgid "Disconnected"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:147
+msgid "Choose a network adapter"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:200
+msgid ""
+"“{0}” has several network adapters. Choose the one that should receive "
+"the magic packet, usually the wired adapter in the LAN."
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:207
+msgid "Network adapters"
+msgstr ""
+
+#: ui/overlays/mac-picker.slint:257
+msgid "Select"
+msgstr ""
+
+#: ui/overlays/modal.slint:119
 msgid "Close (Esc)"
+msgstr ""
+
+#: ui/overlays/power.slint:20
+msgid "Restart host?"
+msgstr ""
+
+#: ui/overlays/power.slint:20
+msgid "Shut down host?"
+msgstr ""
+
+#: ui/overlays/power.slint:93
+msgid "Anyone using this host may lose unsaved work."
+msgstr ""
+
+#: ui/overlays/power.slint:94
+msgid ""
+"To start it again later, use Wake. Wake-on-LAN must be enabled on the host."
+msgstr ""
+
+#: ui/overlays/power.slint:102
+msgid "Delay"
+msgstr ""
+
+#: ui/overlays/power.slint:103
+msgid ""
+"0 = immediately. During the countdown Windows shows a notice on the host, "
+"and “Cancel shutdown” can still stop it."
+msgstr ""
+
+#: ui/overlays/power.slint:117 ui/overlays/settings.slint:314
+#: ui/overlays/power.slint:117 ui/overlays/settings.slint:314 ui/overlays/settings.slint:446
+#: ui/overlays/power.slint:117 ui/overlays/settings.slint:314 ui/overlays/settings.slint:446 ui/overlays/settings.slint:481
+msgid "seconds"
+msgstr ""
+
+#: ui/overlays/power.slint:126
+msgid "Force apps to close"
+msgstr ""
+
+#: ui/overlays/power.slint:131
+msgid ""
+"Apps with unsaved work are closed without asking. If this is off, such apps "
+"can stop Windows from shutting down."
+msgstr ""
+
+#: ui/overlays/power.slint:135
+msgid "Message on the host"
+msgstr ""
+
+#: ui/overlays/power.slint:136
+msgid "Shown only during a countdown (delay above 0)."
+msgstr ""
+
+#: ui/overlays/power.slint:151
+msgid "This host uses its own restart command"
+msgstr ""
+
+#: ui/overlays/power.slint:151
+msgid "This host uses its own shutdown command"
+msgstr ""
+
+#: ui/overlays/power.slint:152
+msgid ""
+"Instead of the platform's default, this command from the host's settings "
+"runs with root rights. Continue only if you know it:"
+msgstr ""
+
+#: ui/overlays/power.slint:170
+msgid ""
+"The command runs with root rights (with sudo if needed). It can take a few "
+"minutes until the host answers again."
+msgstr ""
+
+#: ui/overlays/power.slint:171
+msgid ""
+"The command runs with root rights (with sudo if needed). The host stops "
+"answering shortly afterwards."
 msgstr ""
 
 #: ui/overlays/settings.slint:139
@@ -710,10 +1193,6 @@ msgid ""
 "this time has passed."
 msgstr ""
 
-#: ui/overlays/settings.slint:314
-msgid "seconds"
-msgstr ""
-
 #: ui/overlays/settings.slint:317
 msgid "Magic packet"
 msgstr ""
@@ -744,295 +1223,439 @@ msgid ""
 "out through the physical network."
 msgstr ""
 
-#: ui/overlays/settings.slint:403
+#: ui/overlays/settings.slint:402
+msgid "Restart and shutdown"
+msgstr ""
+
+#: ui/overlays/settings.slint:405
+msgid "Delay on Windows hosts"
+msgstr ""
+
+#: ui/overlays/settings.slint:406
+msgid ""
+"Default countdown before a Windows host restarts or shuts down. 0 = "
+"immediately."
+msgstr ""
+
+#: ui/overlays/settings.slint:421
+msgid "Force apps to close on Windows hosts"
+msgstr ""
+
+#: ui/overlays/settings.slint:422
+msgid ""
+"Apps with unsaved work are closed without asking. If this is off, such apps "
+"can stop the shutdown."
+msgstr ""
+
+#: ui/overlays/settings.slint:433
+msgid "Wait for the host to restart"
+msgstr ""
+
+#: ui/overlays/settings.slint:434
+msgid ""
+"After a restart, the host must answer again with a new boot time within this "
+"time."
+msgstr ""
+
+#: ui/overlays/settings.slint:450
+msgid "Wait for the host to shut down"
+msgstr ""
+
+#: ui/overlays/settings.slint:451
+msgid "After a shutdown, the host must stop answering within this time."
+msgstr ""
+
+#: ui/overlays/settings.slint:466
+msgid "Connection"
+msgstr ""
+
+#: ui/overlays/settings.slint:469
+msgid "Connection timeout"
+msgstr ""
+
+#: ui/overlays/settings.slint:470
+msgid "How long to wait for a host to accept the connection."
+msgstr ""
+
+#: ui/overlays/settings.slint:484
+msgid "Get the boot time automatically"
+msgstr ""
+
+#: ui/overlays/settings.slint:485
+msgid ""
+"When a host with remote management comes online, its boot time is shown in "
+"the list."
+msgstr ""
+
+#: ui/overlays/settings.slint:495
+msgid "Security and requirements"
+msgstr ""
+
+#: ui/overlays/settings.slint:516
+msgid "Passwords are kept in Windows Credential Manager"
+msgstr ""
+
+#: ui/overlays/settings.slint:521
+msgid ""
+"They are stored for your Windows user on this PC only, never in config.toml, "
+"and are not included in portable data or exported files. On another PC, "
+"enter them again."
+msgstr ""
+
+#: ui/overlays/settings.slint:539
+msgid "Windows hosts"
+msgstr ""
+
+#: ui/overlays/settings.slint:544
+msgid ""
+"An administrator account of the host, and File and Printer Sharing (SMB) "
+"allowed from this PC, also over a VPN. Looking up the MAC address also uses "
+"WMI."
+msgstr ""
+
+#: ui/overlays/settings.slint:562
+msgid "Linux, NAS and other SSH hosts"
+msgstr ""
+
+#: ui/overlays/settings.slint:567
+msgid ""
+"SSH login as root, or as a user who can use sudo (with or without a "
+"password)."
+msgstr ""
+
+#: ui/overlays/settings.slint:578
+msgid "Setup guide (README)"
+msgstr ""
+
+#: ui/overlays/settings.slint:596
 msgid "Settings location"
 msgstr ""
 
-#: ui/overlays/settings.slint:445
+#: ui/overlays/settings.slint:638
 msgid "Portable mode"
 msgstr ""
 
-#: ui/overlays/settings.slint:446
+#: ui/overlays/settings.slint:639
 msgid ""
 "Not available in the installed version. Use the ZIP version to carry WoL "
 "Manager on a USB drive."
 msgstr ""
 
-#: ui/overlays/settings.slint:447
+#: ui/overlays/settings.slint:640
 msgid "Not available: the folder of wol-manager.exe is not writable."
 msgstr ""
 
-#: ui/overlays/settings.slint:448
+#: ui/overlays/settings.slint:641
 msgid ""
 "Not available: the location is set by --config-dir or WOL_MANAGER_CONFIG_DIR."
 msgstr ""
 
-#: ui/overlays/settings.slint:449
+#: ui/overlays/settings.slint:642
 msgid "Moving the settings…"
 msgstr ""
 
-#: ui/overlays/settings.slint:450
+#: ui/overlays/settings.slint:643
 msgid "Keep the settings in a “data” folder next to wol-manager.exe."
 msgstr ""
 
-#: ui/overlays/settings.slint:464
+#: ui/overlays/settings.slint:657
 msgid "Command line (wolm)"
 msgstr ""
 
-#: ui/overlays/settings.slint:484
+#: ui/overlays/settings.slint:677
 msgid "wolm.exe was not found next to WoL Manager."
 msgstr ""
 
-#: ui/overlays/settings.slint:494
+#: ui/overlays/settings.slint:687
 msgid "Example:"
 msgstr ""
 
-#: ui/overlays/settings.slint:506
+#: ui/overlays/settings.slint:699
 msgid "Add wolm to the user PATH"
 msgstr ""
 
-#: ui/overlays/settings.slint:507
+#: ui/overlays/settings.slint:700
 msgid "Updating PATH…"
 msgstr ""
 
-#: ui/overlays/settings.slint:508
+#: ui/overlays/settings.slint:701
 msgid "Registered. Open a new terminal window to use wolm."
 msgstr ""
 
-#: ui/overlays/settings.slint:509
+#: ui/overlays/settings.slint:702
 msgid "Not registered. wolm can still be run with its full path."
 msgstr ""
 
-#: ui/overlays/settings.slint:510
+#: ui/overlays/settings.slint:703
 msgid "PATH could not be changed."
 msgstr ""
 
-#: ui/overlays/settings.slint:511 ui/overlays/settings.slint:528
+#: ui/overlays/settings.slint:704 ui/overlays/settings.slint:721
 msgid "Checking the PATH…"
 msgstr ""
 
-#: ui/overlays/settings.slint:524
+#: ui/overlays/settings.slint:717
 msgid "System PATH (all users)"
 msgstr ""
 
-#: ui/overlays/settings.slint:525
+#: ui/overlays/settings.slint:718
 msgid ""
 "Registered by the installer. wolm can be used in any new terminal window."
 msgstr ""
 
-#: ui/overlays/settings.slint:526
+#: ui/overlays/settings.slint:719
 msgid ""
 "Not registered. Run the installer again with “Add the wolm command to "
 "PATH” selected."
 msgstr ""
 
-#: ui/overlays/settings.slint:527
+#: ui/overlays/settings.slint:720
 msgid "The system PATH could not be read."
 msgstr ""
 
-#: ui/overlays/settings.slint:530
+#: ui/overlays/settings.slint:723
 msgid "Registered"
 msgstr ""
 
-#: ui/overlays/settings.slint:530
+#: ui/overlays/settings.slint:723
 msgid "Not registered"
 msgstr ""
 
-#: ui/overlays/settings.slint:547
+#: ui/overlays/settings.slint:740
 msgid "Display"
 msgstr ""
 
-#: ui/overlays/settings.slint:550
+#: ui/overlays/settings.slint:743
 msgid "Renderer"
 msgstr ""
 
-#: ui/overlays/settings.slint:551
+#: ui/overlays/settings.slint:744
 msgid ""
 "Takes effect after WoL Manager is restarted. Choose Software if the window "
 "stays blank or flickers."
 msgstr ""
 
-#: ui/overlays/settings.slint:557
+#: ui/overlays/settings.slint:750
 msgid "Automatic (recommended)"
 msgstr ""
 
-#: ui/overlays/settings.slint:557
+#: ui/overlays/settings.slint:750
 msgid "Software"
 msgstr ""
 
-#: ui/overlays/settings.slint:572
+#: ui/overlays/settings.slint:765
 msgid ""
 "The environment variable SLINT_BACKEND={0} is set and takes precedence over "
 "this setting."
 msgstr ""
 
-#: ui/overlays/settings.slint:577
+#: ui/overlays/settings.slint:770
 msgid "Troubleshooting"
 msgstr ""
 
-#: ui/overlays/settings.slint:579
+#: ui/overlays/settings.slint:772
 msgid "Log files"
 msgstr ""
 
-#: ui/overlays/settings.slint:583
+#: ui/overlays/settings.slint:776
 msgid "Open log folder"
 msgstr ""
 
-#: ui/overlays/settings.slint:594
+#: ui/overlays/settings.slint:787
 msgid "Settings"
 msgstr ""
 
-#: ui/overlays/settings.slint:647
+#: ui/overlays/settings.slint:842
 msgid "General"
 msgstr ""
 
-#: ui/overlays/settings.slint:655
+#: ui/overlays/settings.slint:850
 msgid "Wake & status"
 msgstr ""
 
-#: ui/overlays/settings.slint:663
+#: ui/overlays/settings.slint:866
 msgid "Storage & command line"
 msgstr ""
 
-#: ui/overlays/settings.slint:671
+#: ui/overlays/settings.slint:874
 msgid "Advanced"
 msgstr ""
 
-#: ui/state.slint:319
+#: ui/state.slint:464
 msgid "Checking…"
 msgstr ""
 
-#: ui/state.slint:320
+#: ui/state.slint:465
 msgid "Online"
 msgstr ""
 
-#: ui/state.slint:321
+#: ui/state.slint:466
 msgid "Offline"
 msgstr ""
 
-#: ui/state.slint:322
+#: ui/state.slint:467
 msgid "Waking…"
 msgstr ""
 
-#: ui/state.slint:323
+#: ui/state.slint:468
 msgid "No response"
 msgstr ""
 
-#: ui/state.slint:324
+#: ui/state.slint:469
 msgid "Not monitored"
 msgstr ""
 
-#: ui/state.slint:325
+#: ui/state.slint:470
+msgid "Restarting…"
+msgstr ""
+
+#: ui/state.slint:471
+msgid "Shutting down…"
+msgstr ""
+
+#: ui/state.slint:472
 msgid "Unknown"
 msgstr ""
 
-#: ui/state.slint:331
+#: ui/state.slint:484
+msgid "Wired"
+msgstr ""
+
+#: ui/state.slint:485
+msgid "Wi-Fi"
+msgstr ""
+
+#: ui/state.slint:486
+msgid "Other"
+msgstr ""
+
+#: ui/state.slint:492
 msgid "Answered ping in {0} ms"
 msgstr ""
 
-#: ui/state.slint:331
+#: ui/state.slint:492
 msgid "Answered ping"
 msgstr ""
 
-#: ui/state.slint:334
+#: ui/state.slint:495
 msgid "Answered on a TCP port in {0} ms"
 msgstr ""
 
-#: ui/state.slint:334
+#: ui/state.slint:495
 msgid "Answered on a TCP port"
 msgstr ""
 
-#: ui/state.slint:336
+#: ui/state.slint:497
 msgid "The host answered the last check."
 msgstr ""
 
-#: ui/state.slint:338
+#: ui/state.slint:499
 msgid "The host did not answer the last check."
 msgstr ""
 
-#: ui/state.slint:339
+#: ui/state.slint:500
 msgid "Magic packet sent. Waiting for the host to answer…"
 msgstr ""
 
-#: ui/state.slint:340
+#: ui/state.slint:501
 msgid "The host did not answer after the magic packet was sent."
 msgstr ""
 
-#: ui/state.slint:341
+#: ui/state.slint:502
 msgid "Checking whether the host answers…"
 msgstr ""
 
-#: ui/state.slint:343
+#: ui/state.slint:503
+msgid "Restart requested. Waiting for the host to start again…"
+msgstr ""
+
+#: ui/state.slint:504
+msgid "Shutdown requested. Waiting for the host to stop answering…"
+msgstr ""
+
+#: ui/state.slint:506
 msgid "No address is set, so the status can't be checked."
 msgstr ""
 
-#: ui/state.slint:343
+#: ui/state.slint:506
 msgid "Status checks are turned off for this host."
 msgstr ""
 
-#: ui/state.slint:345
+#: ui/state.slint:508
 msgid "Not checked yet."
 msgstr ""
 
-#: ui/state.slint:349
+#: ui/state.slint:512
 msgid "Required."
 msgstr ""
 
-#: ui/state.slint:350
+#: ui/state.slint:513
 msgid "Enter a MAC address such as AA:BB:CC:DD:EE:FF."
 msgstr ""
 
-#: ui/state.slint:351
+#: ui/state.slint:514
 msgid ""
 "Multicast, broadcast and all-zero addresses can't be woken. The first byte "
 "must be even."
 msgstr ""
 
-#: ui/state.slint:352
+#: ui/state.slint:515
 msgid "Enter an IPv4 address or a host name."
 msgstr ""
 
-#: ui/state.slint:353
+#: ui/state.slint:516
 msgid "Enter a port number from 1 to 65535."
 msgstr ""
 
-#: ui/state.slint:354
+#: ui/state.slint:517
 msgid "Enter port numbers from 1 to 65535, separated by commas."
 msgstr ""
 
-#: ui/state.slint:355
+#: ui/state.slint:518
 msgid "Enter up to 16 ports."
 msgstr ""
 
-#: ui/state.slint:356
+#: ui/state.slint:519
 msgid "Enter 6 bytes in hex, such as 01:23:45:67:89:AB."
 msgstr ""
 
-#: ui/state.slint:357
+#: ui/state.slint:520
 msgid "Enter one target per line as host or host:port."
 msgstr ""
 
-#: ui/state.slint:358
+#: ui/state.slint:521
 msgid "A host with this name already exists."
 msgstr ""
 
-#: ui/state.slint:359
+#: ui/state.slint:522
 msgid "The name can't be a MAC address."
 msgstr ""
 
-#: ui/state.slint:360
+#: ui/state.slint:523
 msgid "Use 64 characters or fewer."
 msgstr ""
 
-#: ui/state.slint:361
+#: ui/state.slint:524
 msgid "Contains kana. Turn off the IME and type it again."
 msgstr ""
 
-#: ui/state.slint:367
+#: ui/state.slint:525
+msgid "This user name contains characters that can't be used."
+msgstr ""
+
+#: ui/state.slint:526
+msgid "The command contains characters that can't be used, or it is too long."
+msgstr ""
+
+#: ui/state.slint:527
+msgid "The host key is not an OpenSSH public key such as ssh-ed25519 AAAA…"
+msgstr ""
+
+#: ui/state.slint:533
 msgid "Custom location"
 msgstr ""
 
-#: ui/state.slint:368
+#: ui/state.slint:534
 msgid "Standard (AppData)"
 msgstr ""
 

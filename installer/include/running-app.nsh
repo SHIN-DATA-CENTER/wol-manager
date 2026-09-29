@@ -78,15 +78,16 @@ Function ${UN}EnsureAppClosed
 
   check_files:
   ${If} $CheckFiles == 1
-    ; Right after a quit request the image may stay mapped for a moment after the mutex is
-    ; gone (the GUI flushes its settings), so allow up to 5 seconds before asking.
+    ; Allow up to 5 seconds before asking: right after a quit request the image may stay
+    ; mapped for a moment after the mutex is gone (the GUI flushes its settings), a wolm.exe
+    ; that this setup just ran (wolm path status on an upgrade) may still be exiting, and
+    ; antivirus scanners briefly lock freshly written or executed files.
     StrCpy $3 0
     ${Do}
       StrCpy $FileInUse ""
       !insertmacro _WOL_PROBE_FILE_IN_USE "$INSTDIR\${CLI_SUBDIR}\${CLI_EXE}"
       !insertmacro _WOL_PROBE_FILE_IN_USE "$INSTDIR\${GUI_EXE}"
       ${If} $FileInUse == ""
-      ${OrIf} $R9 != 1
       ${OrIf} $3 >= 20
         ${ExitDo}
       ${EndIf}

@@ -16,10 +16,19 @@ export enum HostStatus {
     waking,         // magic packet sent, waiting for the host to come up (amber, pulsing)
     timeout,        // waking gave up after verify_timeout_secs (red); kept until next answer / wake
     not-monitored,  // probe = none or no address (hollow grey dot)
+    restarting,     // v0.2: restart accepted, waiting for the host to come back (amber, pulsing)
+    shutting-down,  // v0.2: shutdown accepted, waiting for the host to stop answering (grey, pulsing)
 }
 
 /// How the last successful probe reached the host (shown in the status tooltip).
 export enum ProbeVia { none, icmp, tcp }
+
+/// v0.2: how a host is managed remotely (restart / shutdown / boot time / MAC lookup).
+export enum RemoteKind {
+    none,     // not managed (no [hosts.remote] table)
+    windows,  // Windows remote management (SMB/RPC + WMI)
+    ssh,      // Linux / NAS / FreeBSD over SSH
+}
 
 /// One row of the host list. Identified by `id` everywhere, never by row index.
 export struct HostRow {
@@ -32,6 +41,56 @@ export struct HostRow {
     status: HostStatus,
     via: ProbeVia,      // meaningful when status == online
     rtt-ms: int,        // round-trip time of the last successful probe, -1 = unknown
+    // ---- v0.2 remote management ----
+    managed: bool,          // remote management is set up (remote-kind != none)
+    remote-kind: RemoteKind,
+    boot-text: string,      // localized by Rust, e.g. "起動 9/29 08:12 (稼働 3 時間 12 分)"; "" = unknown / hidden
+    boot-approx: bool,      // the boot time is approximate (Windows statistics were denied)
+    busy-remote: bool,      // a remote operation for this host is running (menus disabled, spinner)
+}
+
+/// v0.2: kind of a network adapter found on a remote host ("Get from IP" candidates).
+export enum MacKind { physical, wifi, other }
+
+/// v0.2: one MAC address candidate of the MAC picker (sorted by score, best first).
+export struct MacCandidateRow {
+    iface: string,          // adapter name as reported by the host, e.g. "Ethernet" / "enp3s0"
+    mac: string,            // display form "AA:BB:CC:DD:EE:FF"
+    kind: MacKind,
+    detail: string,         // data, e.g. "192.168.1.20/24" (LAN IPv4 of the adapter); "" = none
+    default-route: bool,    // the host's default route goes through this adapter
+    link-up: bool,          // cable connected / Wi-Fi associated
+    score: int,             // ranking by Rust (higher = better); equal to the first row's = recommended
+}
+
+/// v0.2: SSH host key shown in the trust dialog (unknown key) or the mismatch error.
+export struct HostKeyPrompt {
+    host-id: string,              // host UUID ("" when the editor tests a new, unsaved host)
+    host-name: string,            // data
+    address: string,              // management address (IPv4 or host name)
+    port: int,                    // SSH port
+    key-type: string,             // e.g. "ssh-ed25519"
+    fingerprint: string,          // received key, "SHA256:…"
+    key-line: string,             // received key in OpenSSH form ("ssh-ed25519 AAAA…"); not shown
+    mismatch: bool,               // true: the received key differs from the pinned one (hard error)
+    expected-fingerprint: string, // mismatch only: the pinned key's "SHA256:…"
+}
+
+/// v0.2: restart or shut down.
+export enum PowerAction { restart, shutdown }
+
+/// v0.2: request shown in the power confirm dialog. The UI edits delay-secs / force / message.
+export struct PowerRequest {
+    host-id: string,
+    host-name: string,      // data
+    address: string,        // management address shown under the name
+    action: PowerAction,
+    kind: RemoteKind,       // windows: options are shown; ssh: sudo note
+    delay-secs: int,        // Windows countdown 0..=600 (0 = immediately); ignored for SSH
+    force: bool,            // Windows: force apps to close; ignored for SSH
+    message: string,        // Windows: message shown during the countdown ("" = none); ignored for SSH
+    command: string,        // SSH: the host's own command for this action, run with root rights instead of the
+                            // platform default ("" = the default); read-only, always shown (data)
 }
 
 /// Entry of the tray "Wake host" submenu.
@@ -82,6 +141,7 @@ export enum ConfirmKind {
     portable-disable,    // path = AppData folder that will be used again
     portable-overwrite,  // path = existing data folder; accept = overwrite, alternate = use existing
     save-as-new,         // host-id + subject(name): host was deleted externally while editing
+    forget-host-key,     // v0.2: host-id + subject(name): remove the pinned SSH host key
 }
 
 export struct ConfirmRequest {
@@ -114,10 +174,33 @@ export enum FieldIssue {
     name-looks-like-mac,
     name-too-long,
     ime-kana,
+    invalid-user,      // v0.2: remote user name
+    invalid-command,   // v0.2: SSH power command override (not editable in the GUI; config only)
+    invalid-host-key,  // v0.2: pinned SSH host key is not an OpenSSH public key (config only)
 }
 
-/// State of the "Get from IP" (ARP) lookup in the editor.
-export enum ArpStatus { idle, busy, found, not-found, not-local, failed }
+/// State of the "Get from IP" lookup in the editor (ARP or, v0.2, remote management).
+export enum ArpStatus {
+    idle,
+    busy,
+    found,
+    not-found,
+    not-local,
+    failed,        // + EditorState.arp-message (Rust text, may be "")
+    needs-remote,  // v0.2: not on a local subnet (e.g. VPN) and no remote management; arp-message explains
+}
+
+/// v0.2: sudo handling for SSH hosts (config `sudo`; `separate` = own sudo secret).
+export enum SudoMode {
+    auto,      // root: none; else try NOPASSWD, then the login password
+    root,      // the login user is root, no sudo
+    nopasswd,  // sudo without a password
+    password,  // sudo with the login password
+    separate,  // sudo with its own password (secret kind "sudo")
+}
+
+/// v0.2: "Test connection" state in the editor.
+export enum TestStatus { idle, busy, ok, failed }
 
 /// A network adapter that a host can be pinned to.
 export struct InterfaceOption {

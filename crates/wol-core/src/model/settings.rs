@@ -41,56 +41,17 @@ pub mod limits {
     /// connect attempt of its own at each status check.
     pub const TCP_PORTS_MAX: usize = 16;
 
+    /// `remote.shutdown_delay_secs`: Windows countdown before a restart / shutdown (0 = now).
+    pub const SHUTDOWN_DELAY_SECS: RangeInclusive<u32> = 0..=600;
+    /// `remote.restart_verify_timeout_secs` / `remote.shutdown_verify_timeout_secs`.
+    pub const REMOTE_VERIFY_TIMEOUT_SECS: RangeInclusive<u32> = 30..=3600;
+    /// `remote.connect_timeout_ms`: TCP connect timeout of remote management.
+    pub const CONNECT_TIMEOUT_MS: RangeInclusive<u32> = 1000..=60000;
+
     /// `true` when `v` is a valid `gui.poll_interval_secs` (0 or 5..=3600).
     pub fn poll_interval_ok(v: u32) -> bool {
         v == 0 || POLL_INTERVAL_SECS.contains(&v)
     }
-}
-
-macro_rules! str_enum {
-    (
-        $(#[$meta:meta])*
-        $name:ident { $( $(#[$vmeta:meta])* $variant:ident => $text:literal ),+ $(,)? }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-        #[serde(rename_all = "lowercase")]
-        pub enum $name {
-            $( $(#[$vmeta])* $variant, )+
-        }
-
-        impl $name {
-            /// All values, in display order.
-            pub const ALL: &'static [$name] = &[$($name::$variant),+];
-
-            /// The lower-case name used in `config.toml` and on the command line.
-            pub const fn as_str(self) -> &'static str {
-                match self {
-                    $( $name::$variant => $text, )+
-                }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = String;
-            fn from_str(s: &str) -> std::result::Result<Self, String> {
-                let t = normalize::normalize_input(s).trim().to_ascii_lowercase();
-                match t.as_str() {
-                    $( $text => Ok($name::$variant), )+
-                    _ => Err(format!(
-                        "expected one of: {}",
-                        [$($text),+].join(" | ")
-                    )),
-                }
-            }
-        }
-    };
 }
 
 str_enum! {
@@ -144,9 +105,84 @@ pub struct Settings {
     pub probe: ProbeSettings,
     /// `[settings.gui]`.
     pub gui: GuiSettings,
+    /// `[settings.remote]` (v0.2.0): restart / shutdown / boot time.
+    pub remote: RemoteSettings,
     /// Unknown keys, preserved.
     #[serde(flatten)]
     pub extra: toml::Table,
+}
+
+/// `[settings.remote]`: remote management defaults (v0.2.0).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RemoteSettings {
+    /// Windows: countdown (with the message) before a restart / shutdown, `0..=600`
+    /// (0 = immediately, cannot be cancelled). SSH hosts ignore it.
+    pub shutdown_delay_secs: u32,
+    /// Windows: close applications without asking (`bForceAppsClosed`).
+    pub force_apps_closed: bool,
+    /// How long a restart is verified (back online with a new boot time), `30..=3600`.
+    pub restart_verify_timeout_secs: u32,
+    /// How long a shutdown is verified (the host stops answering), `30..=3600`.
+    pub shutdown_verify_timeout_secs: u32,
+    /// TCP connect timeout of remote operations in ms, `1000..=60000`.
+    pub connect_timeout_ms: u32,
+    /// GUI: read the boot time when a managed host becomes Online.
+    pub auto_boot_time: bool,
+    /// Unknown keys, preserved.
+    #[serde(flatten)]
+    pub extra: toml::Table,
+}
+
+impl Default for RemoteSettings {
+    fn default() -> Self {
+        Self {
+            shutdown_delay_secs: 30,
+            force_apps_closed: true,
+            restart_verify_timeout_secs: 600,
+            shutdown_verify_timeout_secs: 300,
+            connect_timeout_ms: 5000,
+            auto_boot_time: true,
+            extra: toml::Table::new(),
+        }
+    }
+}
+
+impl RemoteSettings {
+    /// `shutdown_delay_secs` clamped to [`limits::SHUTDOWN_DELAY_SECS`].
+    pub fn effective_shutdown_delay_secs(&self) -> u32 {
+        self.shutdown_delay_secs
+            .min(*limits::SHUTDOWN_DELAY_SECS.end())
+    }
+
+    /// `restart_verify_timeout_secs` clamped to [`limits::REMOTE_VERIFY_TIMEOUT_SECS`].
+    pub fn effective_restart_verify_timeout(&self) -> Duration {
+        Duration::from_secs(u64::from(self.restart_verify_timeout_secs.clamp(
+            *limits::REMOTE_VERIFY_TIMEOUT_SECS.start(),
+            *limits::REMOTE_VERIFY_TIMEOUT_SECS.end(),
+        )))
+    }
+
+    /// `shutdown_verify_timeout_secs` clamped to [`limits::REMOTE_VERIFY_TIMEOUT_SECS`].
+    pub fn effective_shutdown_verify_timeout(&self) -> Duration {
+        Duration::from_secs(u64::from(self.shutdown_verify_timeout_secs.clamp(
+            *limits::REMOTE_VERIFY_TIMEOUT_SECS.start(),
+            *limits::REMOTE_VERIFY_TIMEOUT_SECS.end(),
+        )))
+    }
+
+    /// `connect_timeout_ms` clamped to [`limits::CONNECT_TIMEOUT_MS`].
+    pub fn effective_connect_timeout_ms(&self) -> u32 {
+        self.connect_timeout_ms.clamp(
+            *limits::CONNECT_TIMEOUT_MS.start(),
+            *limits::CONNECT_TIMEOUT_MS.end(),
+        )
+    }
+
+    /// [`RemoteSettings::effective_connect_timeout_ms`] as a `Duration`.
+    pub fn effective_connect_timeout(&self) -> Duration {
+        Duration::from_millis(u64::from(self.effective_connect_timeout_ms()))
+    }
 }
 
 /// `[settings.wake]`.
@@ -374,6 +410,24 @@ pub const KEY_INFO: &[KeyInfo] = &[
         "0 (off) or 5..=3600",
     ),
     ki("gui.renderer", ValueType::Choice, "auto | software"),
+    ki("remote.shutdown_delay_secs", ValueType::Integer, "0..=600"),
+    ki("remote.force_apps_closed", ValueType::Bool, "true | false"),
+    ki(
+        "remote.restart_verify_timeout_secs",
+        ValueType::Integer,
+        "30..=3600",
+    ),
+    ki(
+        "remote.shutdown_verify_timeout_secs",
+        ValueType::Integer,
+        "30..=3600",
+    ),
+    ki(
+        "remote.connect_timeout_ms",
+        ValueType::Integer,
+        "1000..=60000",
+    ),
+    ki("remote.auto_boot_time", ValueType::Bool, "true | false"),
 ];
 
 fn parse_bool(s: &str) -> Option<bool> {
@@ -438,6 +492,12 @@ impl Settings {
         "gui.start_in_tray",
         "gui.poll_interval_secs",
         "gui.renderer",
+        "remote.shutdown_delay_secs",
+        "remote.force_apps_closed",
+        "remote.restart_verify_timeout_secs",
+        "remote.shutdown_verify_timeout_secs",
+        "remote.connect_timeout_ms",
+        "remote.auto_boot_time",
     ];
 
     /// Type and accepted values of a key.
@@ -480,6 +540,16 @@ impl Settings {
             "gui.start_in_tray" => V::Boolean(self.gui.start_in_tray),
             "gui.poll_interval_secs" => int(self.gui.poll_interval_secs.into()),
             "gui.renderer" => V::String(self.gui.renderer.to_string()),
+            "remote.shutdown_delay_secs" => int(self.remote.shutdown_delay_secs.into()),
+            "remote.force_apps_closed" => V::Boolean(self.remote.force_apps_closed),
+            "remote.restart_verify_timeout_secs" => {
+                int(self.remote.restart_verify_timeout_secs.into())
+            }
+            "remote.shutdown_verify_timeout_secs" => {
+                int(self.remote.shutdown_verify_timeout_secs.into())
+            }
+            "remote.connect_timeout_ms" => int(self.remote.connect_timeout_ms.into()),
+            "remote.auto_boot_time" => V::Boolean(self.remote.auto_boot_time),
             other => return Err(Error::UnknownSettingKey(other.to_owned())),
         })
     }
@@ -549,6 +619,22 @@ impl Settings {
                 self.gui.poll_interval_secs = v;
             }
             "gui.renderer" => self.gui.renderer = value.parse().map_err(|_| bad())?,
+            "remote.shutdown_delay_secs" => {
+                self.remote.shutdown_delay_secs = parse_uint(value, 0..=600).ok_or_else(bad)?
+            }
+            "remote.force_apps_closed" => self.remote.force_apps_closed = b()?,
+            "remote.restart_verify_timeout_secs" => {
+                self.remote.restart_verify_timeout_secs =
+                    parse_uint(value, 30..=3600).ok_or_else(bad)?
+            }
+            "remote.shutdown_verify_timeout_secs" => {
+                self.remote.shutdown_verify_timeout_secs =
+                    parse_uint(value, 30..=3600).ok_or_else(bad)?
+            }
+            "remote.connect_timeout_ms" => {
+                self.remote.connect_timeout_ms = parse_uint(value, 1000..=60000).ok_or_else(bad)?
+            }
+            "remote.auto_boot_time" => self.remote.auto_boot_time = b()?,
             other => return Err(Error::UnknownSettingKey(other.to_owned())),
         }
         Ok(())
@@ -594,6 +680,27 @@ impl Settings {
             "gui.poll_interval_secs",
             limits::poll_interval_ok(self.gui.poll_interval_secs),
             self.gui.poll_interval_secs.to_string(),
+        );
+        let r = &self.remote;
+        check(
+            "remote.shutdown_delay_secs",
+            limits::SHUTDOWN_DELAY_SECS.contains(&r.shutdown_delay_secs),
+            r.shutdown_delay_secs.to_string(),
+        );
+        check(
+            "remote.restart_verify_timeout_secs",
+            limits::REMOTE_VERIFY_TIMEOUT_SECS.contains(&r.restart_verify_timeout_secs),
+            r.restart_verify_timeout_secs.to_string(),
+        );
+        check(
+            "remote.shutdown_verify_timeout_secs",
+            limits::REMOTE_VERIFY_TIMEOUT_SECS.contains(&r.shutdown_verify_timeout_secs),
+            r.shutdown_verify_timeout_secs.to_string(),
+        );
+        check(
+            "remote.connect_timeout_ms",
+            limits::CONNECT_TIMEOUT_MS.contains(&r.connect_timeout_ms),
+            r.connect_timeout_ms.to_string(),
         );
         v
     }
@@ -723,6 +830,73 @@ mod tests {
             Error::UnknownSettingKey(_)
         ));
         assert_eq!(s, Settings::default());
+    }
+
+    #[test]
+    fn remote_keys() {
+        let mut s = Settings::default();
+        assert_eq!(s.get_key("remote.shutdown_delay_secs").unwrap(), "30");
+        assert_eq!(s.get_key("remote.force_apps_closed").unwrap(), "true");
+        assert_eq!(
+            s.get_key("remote.restart_verify_timeout_secs").unwrap(),
+            "600"
+        );
+        assert_eq!(
+            s.get_key("remote.shutdown_verify_timeout_secs").unwrap(),
+            "300"
+        );
+        assert_eq!(s.get_key("remote.connect_timeout_ms").unwrap(), "5000");
+        assert_eq!(s.get_key("remote.auto_boot_time").unwrap(), "true");
+        s.set_key("remote.shutdown_delay_secs", "0").unwrap();
+        s.set_key("remote.shutdown_delay_secs", "６００").unwrap();
+        assert_eq!(s.remote.shutdown_delay_secs, 600);
+        s.set_key("remote.force_apps_closed", "off").unwrap();
+        assert!(!s.remote.force_apps_closed);
+        s.set_key("remote.restart_verify_timeout_secs", "30")
+            .unwrap();
+        s.set_key("remote.shutdown_verify_timeout_secs", "3600")
+            .unwrap();
+        s.set_key("remote.connect_timeout_ms", "1000").unwrap();
+        s.set_key("remote.auto_boot_time", "no").unwrap();
+        assert_eq!(
+            s.remote.effective_restart_verify_timeout(),
+            Duration::from_secs(30)
+        );
+        assert!(s.out_of_range().is_empty());
+        let before = s.clone();
+        for (k, v) in [
+            ("remote.shutdown_delay_secs", "601"),
+            ("remote.restart_verify_timeout_secs", "29"),
+            ("remote.shutdown_verify_timeout_secs", "3601"),
+            ("remote.connect_timeout_ms", "999"),
+            ("remote.connect_timeout_ms", "60001"),
+            ("remote.auto_boot_time", "maybe"),
+        ] {
+            assert!(
+                matches!(s.set_key(k, v), Err(Error::InvalidSetting { .. })),
+                "{k}={v}"
+            );
+        }
+        assert_eq!(s, before);
+        // Hand-edited values out of range: reported, clamped by the effective getters.
+        s.remote.connect_timeout_ms = 10;
+        s.remote.shutdown_delay_secs = 9999;
+        s.remote.restart_verify_timeout_secs = 1;
+        let keys: Vec<&str> = s.out_of_range().into_iter().map(|(k, ..)| k).collect();
+        assert_eq!(
+            keys,
+            vec![
+                "remote.shutdown_delay_secs",
+                "remote.restart_verify_timeout_secs",
+                "remote.connect_timeout_ms"
+            ]
+        );
+        assert_eq!(s.remote.effective_connect_timeout_ms(), 1000);
+        assert_eq!(s.remote.effective_shutdown_delay_secs(), 600);
+        assert_eq!(
+            s.remote.effective_restart_verify_timeout(),
+            Duration::from_secs(30)
+        );
     }
 
     #[test]

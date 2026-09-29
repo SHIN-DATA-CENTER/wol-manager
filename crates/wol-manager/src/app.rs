@@ -6,9 +6,10 @@
 //! run Slint callbacks or model filters.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use slint::{
@@ -17,13 +18,15 @@ use slint::{
 use wol_core::i18n::{Lang, LangSetting, Msg};
 use wol_core::netif::NetInterface;
 use wol_core::probe::{self, ProbeSpec};
+use wol_core::remote::RemoteClient;
 use wol_core::send::{self, WakeOutcome, WakeReport, WakeRequest};
 use wol_core::store::{ConfigLocation, ConfigSource, LoadWarning, Loaded, ReadOnlyReason, Store};
 use wol_core::{Config, Error, HostId};
 
-use crate::editor::EditorSession;
+use crate::editor::{EditorSession, SecretJob};
 use crate::geometry::{GuiState, WindowGeometry};
 use crate::persist::{Op, OpOutput, StoreEvent, StoreHandle};
+use crate::remote::{RemoteState, Retry, TopDialog};
 use crate::rows::{self, HostList};
 use crate::scheduler::{self, Event, Job, Scheduler};
 use crate::session::{SessionEvent, SessionWindow};
@@ -31,11 +34,17 @@ use crate::settings::{Debouncer, EnvStatus};
 use crate::texts::{GuiText, Text};
 use crate::theme::ThemeState;
 use crate::tray::Tray;
-use crate::workers::{Pool, post_ui};
+use crate::workers::{Pool, SerialQueue, post_ui};
 use crate::{
-    AboutInfo, AppState, AppWindow, ConfirmKind, ConfirmRequest, EditorMode, InterfaceOption,
-    Notice, NoticeKind, OverlayKind, StorageMode, Toast, ToastKind,
+    AboutInfo, AppState, AppWindow, ConfirmKind, ConfirmRequest, EditorMode, EditorState,
+    HostKeyPrompt, InterfaceOption, Notice, NoticeKind, OverlayKind, StorageMode, Toast, ToastKind,
 };
+
+/// Seconds between re-renders of the boot texts (the uptime in them grows).
+const BOOT_TEXT_REFRESH_TICKS: u64 = 30;
+
+/// How long the exit waits for queued Credential Manager changes.
+const SECRET_FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
 
 thread_local! {
     static APP: RefCell<Option<Rc<App>>> = const { RefCell::new(None) };
@@ -144,6 +153,17 @@ pub(crate) enum Pending {
         name: String,
     },
     Settings,
+    /// A host key the user trusted (then the interrupted operation runs again).
+    TrustKey {
+        name: String,
+        fingerprint: String,
+        retry: Retry,
+        known: bool,
+    },
+    /// "Forget the host key".
+    ForgetKey {
+        name: String,
+    },
 }
 
 struct ToastEntry {
@@ -238,6 +258,33 @@ pub struct App {
     pub(crate) tray_recreate_pending: Cell<bool>,
     pub(crate) env_status: RefCell<Option<EnvStatus>>,
     pub(crate) portable_busy: Cell<bool>,
+    /// Remote management: boot times, busy markers, verifications (v0.2.0).
+    pub(crate) remote: RefCell<RemoteState>,
+    /// Remote operations the user started (blocking network calls of up to minutes; kept off
+    /// the io pool).
+    pub(crate) remote_pool: Pool,
+    /// Automatic boot-time fetches: their own, smaller lane, so that they never hold up a user
+    /// operation such as "Cancel shutdown" (cross review m1).
+    pub(crate) auto_pool: Pool,
+    /// Credential Manager changes (editor saves, deleted hosts), in order; remote operations
+    /// wait for the ones queued before them, and the app flushes it on exit (cross review m1).
+    pub(crate) secret_queue: Arc<SerialQueue>,
+    /// Credential Manager work of store operations in flight, by tag: the store thread takes
+    /// it and queues it as soon as the operation is written (review C2).
+    secret_jobs: Arc<Mutex<HashMap<u64, SecretJob>>>,
+    /// An editor's "Test connection" / "Get from IP" runs (possibly of an editor that was
+    /// closed): one at a time, the buttons stay busy until it ended (review C5).
+    pub(crate) editor_test_running: Cell<bool>,
+    pub(crate) editor_lookup_running: Cell<bool>,
+    /// Hosts whose editor save still has Credential Manager work queued: no automatic fetch
+    /// until it ran (it may write the typed password; cross review m2).
+    pub(crate) secrets_pending: RefCell<HashSet<HostId>>,
+    /// Remote management client (real backends, Credential Manager).
+    pub(crate) client: RemoteClient,
+    /// Top-layer dialogs waiting for the open one to close (contract §10.8).
+    pub(crate) top_queue: RefCell<VecDeque<TopDialog>>,
+    /// The host-key dialog on screen and the operation it interrupted.
+    pub(crate) hostkey_shown: RefCell<Option<(HostKeyPrompt, Retry)>>,
 }
 
 fn parse_id(id: &str) -> Option<HostId> {
@@ -261,9 +308,19 @@ impl App {
             (Some(_), false) => TrayState::Checking(crate::tray::TRAY_CHECKS),
             (None, false) => TrayState::Off,
         };
-        let store = StoreHandle::start(s.store, s.flag.clone(), |ev| {
-            post_ui(move |app| app.on_store_event(ev));
-        });
+        let secret_queue = Arc::new(SerialQueue::new("secrets"));
+        let secret_jobs: Arc<Mutex<HashMap<u64, SecretJob>>> = Arc::default();
+        let client = RemoteClient::system();
+        let store = {
+            let (queue, jobs, client) = (secret_queue.clone(), secret_jobs.clone(), client.clone());
+            StoreHandle::start(s.store, s.flag.clone(), move |ev| {
+                // Credential Manager work of a written operation is queued here, on the store
+                // thread, so that it also runs when the UI never sees the result (exit, session
+                // end; review C2).
+                crate::editor::hand_off_secret_job(&jobs, &queue, &client, &ev);
+                post_ui(move |app| app.on_store_event(ev));
+            })
+        };
         let gui_state = crate::geometry::load(&s.location.gui_state_file());
         let session = match SessionWindow::create(|ev| {
             with(|a| a.on_session_event(ev));
@@ -328,6 +385,17 @@ impl App {
             tray_recreate_pending: Cell::new(false),
             env_status: RefCell::new(None),
             portable_busy: Cell::new(false),
+            remote: RefCell::new(RemoteState::default()),
+            remote_pool: Pool::new("remote", 4),
+            auto_pool: Pool::new("remote-auto", 2),
+            secret_queue,
+            secret_jobs,
+            editor_test_running: Cell::new(false),
+            editor_lookup_running: Cell::new(false),
+            secrets_pending: RefCell::new(HashSet::new()),
+            client,
+            top_queue: RefCell::new(VecDeque::new()),
+            hostkey_shown: RefCell::new(None),
         });
         app.init_ui(cfg);
         if let Some(e) = load_error {
@@ -400,6 +468,7 @@ impl App {
             self.push_toasts();
             self.push_notices();
             self.update_tray_ui();
+            self.refresh_remote_rows();
             self.retranslate_editor(old);
         }
     }
@@ -581,10 +650,18 @@ impl App {
                     .set_last_check(crate::logging::clock().into());
             }
         }
+        self.remote_sync();
         {
             let cfg = self.cfg.borrow();
             let sched = self.sched.borrow();
-            self.list.reconcile(&cfg, |h| sched.row_state(h.id));
+            let remote = self.remote.borrow();
+            let lang = self.lang.get();
+            let wall = std::time::SystemTime::now();
+            self.list.reconcile(
+                &cfg,
+                |h| sched.row_state(h.id),
+                |h| remote.row(h.id, lang, wall),
+            );
             let groups: Vec<SharedString> = cfg.groups().into_iter().map(Into::into).collect();
             if self.groups.iter().ne(groups.iter().cloned()) {
                 self.groups.set_vec(groups);
@@ -646,7 +723,7 @@ impl App {
         self.sync_selection();
     }
 
-    fn refresh_row(&self, id: HostId) {
+    pub(crate) fn refresh_row(&self, id: HostId) {
         let st = self.sched.borrow().row_state(id);
         let sid = id.to_string();
         self.list.set_state(&sid, st);
@@ -721,12 +798,31 @@ impl App {
 
     /// Queues a store update.
     pub(crate) fn submit(&self, op: Op, pending: Pending) {
+        self.submit_inner(op, pending, None);
+    }
+
+    /// Queues a store update with the Credential Manager work that follows it once written.
+    pub(crate) fn submit_with_secrets(&self, op: Op, pending: Pending, job: SecretJob) {
+        self.submit_inner(op, pending, Some(job));
+    }
+
+    fn submit_inner(&self, op: Op, pending: Pending, job: Option<SecretJob>) {
         let tag = self.next_tag();
         self.pending.borrow_mut().insert(tag, pending);
+        let lock = || {
+            self.secret_jobs
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        };
+        if let Some(job) = job {
+            // Before the op goes to the store thread, which takes it when the op is written.
+            lock().insert(tag, job);
+        }
         match self.store.borrow().as_ref() {
             Some(s) => s.update(tag, op),
             None => {
                 self.pending.borrow_mut().remove(&tag);
+                lock().remove(&tag);
             }
         }
     }
@@ -789,7 +885,7 @@ impl App {
                 match result {
                     Ok(updated) => {
                         if let Some(p) = pending {
-                            self.on_op_done(p, &updated.value);
+                            self.on_op_done(p, &updated.value, &updated.config);
                         }
                         if self.pending_count() == 0 {
                             self.deferred.borrow_mut().take();
@@ -830,7 +926,7 @@ impl App {
         }
     }
 
-    fn on_op_done(&self, p: Pending, out: &OpOutput) {
+    fn on_op_done(&self, p: Pending, out: &OpOutput, cfg: &Config) {
         match p {
             Pending::Save {
                 token,
@@ -842,6 +938,7 @@ impl App {
                     OpOutput::Saved(i) => *i,
                     _ => id,
                 };
+                // Its passwords were queued by the store thread (`SecretJob`, review C2).
                 self.close_editor_after_save(token);
                 let msg = match mode {
                     EditorMode::Edit => Msg::HostUpdated { name },
@@ -855,6 +952,19 @@ impl App {
                 self.toast(ToastKind::Success, Msg::HostRemoved { name }, Text::Empty);
             }
             Pending::Settings => {}
+            Pending::TrustKey {
+                name,
+                fingerprint,
+                retry,
+                known,
+            } => self.host_key_trusted(name, fingerprint, retry, known, cfg),
+            Pending::ForgetKey { name } => {
+                self.toast(
+                    ToastKind::Success,
+                    Msg::HostKeyForgotten { label: name },
+                    Text::Empty,
+                );
+            }
         }
     }
 
@@ -866,6 +976,9 @@ impl App {
             }
             Pending::Settings => {
                 self.toast(ToastKind::Error, GuiText::SettingFailed, Text::error(e));
+            }
+            Pending::TrustKey { .. } | Pending::ForgetKey { .. } => {
+                self.toast(ToastKind::Error, GuiText::HostKeySaveFailed, Text::error(e));
             }
         }
     }
@@ -896,6 +1009,12 @@ impl App {
         if n.is_multiple_of(2) {
             self.follow_os_theme();
         }
+        if n.is_multiple_of(BOOT_TEXT_REFRESH_TICKS) {
+            self.refresh_remote_rows();
+        }
+        self.run_due_boot_retries();
+        // A cancelled MAC picker closes without a callback: open what waited for it.
+        self.pump_top();
     }
 
     pub(crate) fn dispatch(&self, jobs: Vec<Job>) {
@@ -922,6 +1041,7 @@ impl App {
     }
 
     fn on_probe_result(&self, job: Job, state: probe::HostState) {
+        let prev = self.sched.borrow().row_state(job.id).status;
         let applied =
             self.sched
                 .borrow_mut()
@@ -930,7 +1050,9 @@ impl App {
             log::debug!("dropped stale probe result for {}", job.id);
             return;
         };
+        let now_status = self.sched.borrow().row_state(job.id).status;
         self.refresh_row(job.id);
+        self.remote_status_changed(job.id, prev, now_status);
         if a.round_done {
             self.ui
                 .global::<AppState>()
@@ -956,6 +1078,9 @@ impl App {
             }
             Event::WakeTimedOut(id, secs) => {
                 self.refresh_row(id);
+                if self.remote.borrow_mut().clear_boot(id) {
+                    self.refresh_remote_row(id);
+                }
                 if let Some(label) = self.host_name(id) {
                     self.toast(
                         ToastKind::Warning,
@@ -967,10 +1092,20 @@ impl App {
         }
     }
 
-    /// No overlay and no confirm dialog is open.
-    pub(crate) fn idle(&self) -> bool {
+    /// A top-layer dialog is open: confirm, power, host key or (above the editor) the MAC
+    /// picker (`ModalGate.top-open`).
+    pub(crate) fn top_open(&self) -> bool {
         let st = self.ui.global::<AppState>();
-        st.get_overlay() == OverlayKind::None && !st.get_confirm_open()
+        st.get_confirm_open()
+            || st.get_power_open()
+            || st.get_hostkey_open()
+            || (st.get_overlay() == OverlayKind::Editor
+                && self.ui.global::<EditorState>().get_mac_picker_open())
+    }
+
+    /// No overlay and no dialog is open.
+    pub(crate) fn idle(&self) -> bool {
+        self.ui.global::<AppState>().get_overlay() == OverlayKind::None && !self.top_open()
     }
 
     /// F5 / Refresh.
@@ -1013,7 +1148,10 @@ impl App {
         }
         let verify = self.cfg.borrow().settings.wake.effective_verify_timeout();
         for id in &ids {
-            self.sched.borrow_mut().wake_started(*id, now, verify);
+            if self.sched.borrow_mut().wake_started(*id, now, verify) {
+                // A wake supersedes a restart / shutdown verification.
+                self.remote_wake_started(*id);
+            }
             self.refresh_row(*id);
         }
         self.update_status_ui();
@@ -1127,14 +1265,9 @@ impl App {
     // ---------------------------------------------------------------------------------------
     // Host actions
 
-    /// Opens the confirm dialog.
+    /// Opens the confirm dialog (queued while another top-layer dialog is open).
     pub(crate) fn confirm(&self, req: ConfirmRequest) {
-        let st = self.ui.global::<AppState>();
-        if st.get_confirm_open() {
-            return;
-        }
-        st.set_confirm(req);
-        st.set_confirm_open(true);
+        self.show_top(TopDialog::Confirm(req));
     }
 
     /// Asks before deleting.
@@ -1160,7 +1293,11 @@ impl App {
         };
         self.sched.borrow_mut().remove(id);
         self.reconcile_from(local);
-        self.submit(Op::DeleteHost { id }, Pending::Delete { name: host.name });
+        self.submit_with_secrets(
+            Op::DeleteHost { id },
+            Pending::Delete { name: host.name },
+            SecretJob::Delete { id },
+        );
     }
 
     /// Ctrl+C / menu: copy the MAC.
@@ -1217,7 +1354,9 @@ impl App {
             | ConfirmKind::PortableDisable
             | ConfirmKind::PortableOverwrite => self.portable_confirmed(&req, alternate),
             ConfirmKind::SaveAsNew => self.save_as_new(&req),
+            ConfirmKind::ForgetHostKey => self.forget_host_key(&req),
         }
+        self.pump_top();
     }
 
     /// Confirm dialog: Cancel / Esc.
@@ -1229,8 +1368,9 @@ impl App {
             ConfirmKind::SaveAsNew => {
                 self.ui.global::<crate::EditorState>().set_saving(false);
             }
-            ConfirmKind::DeleteHost | ConfirmKind::WakeAll => {}
+            ConfirmKind::DeleteHost | ConfirmKind::WakeAll | ConfirmKind::ForgetHostKey => {}
         }
+        self.pump_top();
     }
 
     /// Overlay closed by the user.
@@ -1416,6 +1556,7 @@ impl App {
             return;
         }
         log::info!("quitting");
+        self.cancel_remote_work();
         // Before hiding: a hidden window reports neither its rectangle nor "maximized".
         self.record_final_geometry();
         self.tick_timer.stop();
@@ -1455,7 +1596,9 @@ impl App {
         );
         self.quitting.set(true);
         self.tick_timer.stop();
-        let busy = self.pending_count() > 0 || self.debounce.borrow().next_deadline().is_some();
+        let busy = self.pending_count() > 0
+            || self.debounce.borrow().next_deadline().is_some()
+            || !self.secret_queue.is_idle();
         let session = self.session.as_ref();
         if busy && let Some(s) = session {
             s.set_block_reason(Some(&GuiText::SavingOnExit.text(self.lang.get())));
@@ -1487,6 +1630,7 @@ impl App {
             return;
         }
         self.quitting.set(true);
+        self.cancel_remote_work();
         self.flush_debounce();
         self.debounce_timer.stop();
         self.tick_timer.stop();
@@ -1508,6 +1652,14 @@ impl App {
                 log::warn!("store thread did not finish within 5 s");
             }
         }
+        // Queued Credential Manager changes (e.g. the passwords of a host deleted just before)
+        // are not dropped with the process (cross review m1).
+        if !self.secret_queue.flush(SECRET_FLUSH_TIMEOUT) {
+            log::warn!("Credential Manager changes did not finish within 3 s");
+        }
+        // Remote operations still running are not waited for: close the Windows connections
+        // they opened with a stored password (they would stay until logoff; review C3).
+        wol_core::remote::cancel_owned_connections();
     }
 
     /// After the event loop: [`App::save_state`] (unless the session end did it already),

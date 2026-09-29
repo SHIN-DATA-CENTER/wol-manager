@@ -232,6 +232,105 @@ fn deterministic_ids_stable_across_load_and_update() {
     );
 }
 
+/// Review m12: ids assigned while reading a hand-edited file are written by
+/// `persist_assigned_ids` (and only then), with the usual lock / `.bak` / atomic rules.
+#[test]
+fn persist_assigned_ids_writes_only_when_ids_were_assigned() {
+    let (_t, s) = temp_store();
+    // No file: nothing to do, nothing created.
+    let up = s.persist_assigned_ids().unwrap();
+    assert_eq!(up.value, HostIdsState::Saved);
+    assert!(!up.written);
+    assert!(!s.location().dir.exists());
+
+    fs::create_dir_all(&s.location().dir).unwrap();
+    let dup = "5f0c6a1e-3b7d-4f5e-9a51-2d6c1f0e8b44";
+    let original = format!(
+        "# my notes\n[[hosts]]\nname = \"NAS\"\nmac = \"00:11:22:33:44:55\"\nfuture = 1\n\n[[hosts]]\nid = \"{dup}\"\nname = \"PC\"\nmac = \"00:11:22:33:44:66\"\n\n[[hosts]]\nid = \"{dup}\"\nname = \"PC2\"\nmac = \"00:11:22:33:44:77\"\n"
+    );
+    fs::write(s.config_path(), &original).unwrap();
+    let loaded = s.load().unwrap();
+    assert!(s.poll_changed().unwrap().is_none());
+    let ids: Vec<HostId> = loaded.config.hosts.iter().map(|h| h.id).collect();
+    assert_ne!(ids[2].to_string(), dup);
+
+    let up = s.persist_assigned_ids().unwrap();
+    assert_eq!(up.value, HostIdsState::Saved);
+    assert!(up.written);
+    assert!(up.value.is_saved(ids[0]));
+    // The ids that were only in memory are now the file's; nothing else changed.
+    assert_eq!(up.config, loaded.config);
+    let text = fs::read_to_string(s.config_path()).unwrap();
+    for id in &ids {
+        assert!(text.contains(&id.to_string()), "{text}");
+    }
+    assert!(text.contains("future = 1"), "{text}");
+    let again = s.load().unwrap();
+    assert_eq!(again.config, loaded.config);
+    assert!(
+        again
+            .warnings
+            .iter()
+            .all(|w| !matches!(w, LoadWarning::Parse(_))),
+        "{:?}",
+        again.warnings
+    );
+    // The previous file is the backup; our own write is not reported as external.
+    assert_eq!(
+        fs::read_to_string(s.location().backup_file()).unwrap(),
+        original
+    );
+    assert!(!s.location().temp_file().exists());
+    assert!(s.poll_changed().unwrap().is_none());
+
+    // Every id in the file: a no-op that does not touch the file.
+    let bytes = fs::read(s.config_path()).unwrap();
+    let up = s.persist_assigned_ids().unwrap();
+    assert_eq!(up.value, HostIdsState::Saved);
+    assert!(!up.written);
+    assert_eq!(up.config, loaded.config);
+    assert_eq!(fs::read(s.config_path()).unwrap(), bytes);
+
+    // A parse error is reported, never "fixed".
+    fs::write(s.config_path(), "[[hosts]\nbroken").unwrap();
+    assert!(matches!(
+        s.persist_assigned_ids().unwrap_err(),
+        Error::ConfigParse { .. }
+    ));
+    assert_eq!(
+        fs::read_to_string(s.config_path()).unwrap(),
+        "[[hosts]\nbroken"
+    );
+}
+
+/// A newer-schema file (read-only) is left alone; the in-memory ids are reported.
+#[test]
+fn persist_assigned_ids_leaves_read_only_files_alone() {
+    let (_t, s) = temp_store();
+    fs::create_dir_all(&s.location().dir).unwrap();
+    let text = "schema_version = 2\n[[hosts]]\nid = \"5f0c6a1e-3b7d-4f5e-9a51-2d6c1f0e8b44\"\nname = \"NAS\"\nmac = \"00:11:22:33:44:55\"\n\n[[hosts]]\nname = \"PC\"\nmac = \"00:11:22:33:44:66\"\n";
+    fs::write(s.config_path(), text).unwrap();
+    let loaded = s.load().unwrap();
+    let (nas, pc) = (loaded.config.hosts[0].id, loaded.config.hosts[1].id);
+    let up = s.persist_assigned_ids().unwrap();
+    assert!(!up.written);
+    assert_eq!(
+        up.value,
+        HostIdsState::Unsaved {
+            reason: ReadOnlyReason::NewerSchema {
+                found: 2,
+                supported: SCHEMA_VERSION
+            },
+            ids: vec![pc],
+        }
+    );
+    assert!(up.value.is_saved(nas));
+    assert!(!up.value.is_saved(pc));
+    assert_eq!(up.config, loaded.config);
+    assert_eq!(fs::read_to_string(s.config_path()).unwrap(), text);
+    assert!(!s.location().lock_file().exists());
+}
+
 #[test]
 fn closure_error_aborts_without_writing() {
     let (_t, s) = temp_store();

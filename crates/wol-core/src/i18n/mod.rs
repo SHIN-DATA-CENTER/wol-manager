@@ -8,6 +8,8 @@
 //! then the OS) and [`resolve_lang_chain`] (CLI: `--lang`, then the env var, then the config).
 
 mod msg;
+mod remote;
+mod time;
 
 use std::fmt;
 use std::str::FromStr;
@@ -15,6 +17,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 pub use msg::{Header, Msg, StatusLabel};
+pub use time::{LocalTime, format_boot_line, format_uptime};
 
 use crate::consts;
 use crate::error::Error;

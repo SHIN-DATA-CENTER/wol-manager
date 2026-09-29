@@ -8,6 +8,7 @@
 //! rendered again after a runtime language switch (contract §9.4).
 
 use wol_core::i18n::{Lang, Msg};
+use wol_core::secret::SecretKind;
 
 /// Messages that only the GUI needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +43,49 @@ pub enum GuiText {
     StartFailed(String),
     /// Shutdown-block reason while settings are saved at logoff / shutdown.
     SavingOnExit,
+    /// Trusting / forgetting an SSH host key could not be saved (detail: the error).
+    HostKeySaveFailed,
+    /// A password could not be saved in / deleted from Credential Manager (detail: the error).
+    SecretSaveFailed,
+    /// A saved password belongs to another connection (kind / account / address / port) and
+    /// is not used until it is entered again.
+    SecretStale {
+        /// Which secret.
+        kind: SecretKind,
+        /// What it was saved for ("" = unknown).
+        stored_for: String,
+        /// Shown in the open editor ("enter it again") rather than after saving ("edit the
+        /// host").
+        in_editor: bool,
+    },
+    /// The host's remote management was set up by a newer version (kept, not usable here).
+    RemoteFromNewerVersion,
+    /// A user action confirmed the use of the current Windows sign-in for a host without a
+    /// saved password (once; cross review X2).
+    SignInConfirmed {
+        /// Host name.
+        label: String,
+        /// The account ("" = unknown).
+        account: String,
+    },
+    /// The editor's SSH key file is on a network path: not saved (cross review m3 / m4).
+    KeyFileOnNetwork(String),
+    /// The saved SSH key file looks like a public key.
+    KeyFileIsPublic(String),
+    /// The saved SSH key file does not exist.
+    KeyFileMissing(String),
+    /// The host's management address, kind or custom command changed while the power dialog
+    /// was open: nothing was sent (review S1 / C9).
+    PowerHostChanged {
+        /// Host name.
+        label: String,
+    },
+    /// A menu action was refused: another operation or a restart / shutdown verification
+    /// of the host runs (review C8).
+    RemoteBusy {
+        /// Host name.
+        label: String,
+    },
 }
 
 impl GuiText {
@@ -77,6 +121,54 @@ impl GuiText {
                 format!("WoL Manager を起動できませんでした。\n\n{detail}")
             }
             GuiText::SavingOnExit => "WoL Manager の設定を保存しています".to_owned(),
+            GuiText::HostKeySaveFailed => "ホスト鍵の設定を保存できませんでした".to_owned(),
+            GuiText::SecretSaveFailed => {
+                "資格情報マネージャーのパスワードを更新できませんでした".to_owned()
+            }
+            GuiText::SecretStale {
+                kind,
+                stored_for,
+                in_editor,
+            } => {
+                let what = Msg::SecretKindName(*kind).text(Lang::Ja);
+                let head = if stored_for.is_empty() {
+                    format!("保存されている{what}は別の接続先用のため、使用されません。")
+                } else {
+                    format!("保存されている{what}は {stored_for} 用のため、使用されません。")
+                };
+                if *in_editor {
+                    format!("{head}もう一度入力してください。")
+                } else {
+                    format!("{head}ホストを編集して、もう一度入力してください。")
+                }
+            }
+            GuiText::RemoteFromNewerVersion => {
+                "このホストのリモート管理は新しいバージョンの WoL Manager で設定されているため、このバージョンでは使えません。ここで設定すると、その設定は置き換えられます。"
+                    .to_owned()
+            }
+            GuiText::SignInConfirmed { label, account } => {
+                let who = if account.is_empty() {
+                    String::new()
+                } else {
+                    format!("（{account}）")
+                };
+                format!(
+                    "{label} にはパスワードが保存されていないため、現在の Windows サインイン{who}で接続します。これ以降、起動時刻の自動取得でも使われます。"
+                )
+            }
+            GuiText::KeyFileOnNetwork(path) => format!(
+                "鍵ファイル {path} はネットワーク上にあるため使えません（読み込むと、その PC に Windows の資格情報でログオンすることになります）。この PC のフォルダーにコピーして指定してください。"
+            ),
+            GuiText::KeyFileIsPublic(path) => format!(
+                "{path} は公開鍵のようです。秘密鍵（.pub の付かないファイル）を指定してください。"
+            ),
+            GuiText::KeyFileMissing(path) => format!("鍵ファイル {path} が見つかりません。"),
+            GuiText::PowerHostChanged { label } => format!(
+                "{label} の設定（管理用アドレス・種類・独自のコマンド）が確認画面を開いている間に変更されたため、実行しませんでした。内容を確認して、もう一度操作してください。"
+            ),
+            GuiText::RemoteBusy { label } => format!(
+                "{label} では別の操作（再起動・シャットダウンの確認など）を実行中です。終わってからもう一度操作してください。"
+            ),
         }
     }
 
@@ -102,6 +194,54 @@ impl GuiText {
             ),
             GuiText::StartFailed(detail) => format!("WoL Manager could not start.\n\n{detail}"),
             GuiText::SavingOnExit => "WoL Manager is saving its settings".to_owned(),
+            GuiText::HostKeySaveFailed => "Could not save the host key setting".to_owned(),
+            GuiText::SecretSaveFailed => {
+                "Could not update the password in Credential Manager".to_owned()
+            }
+            GuiText::SecretStale {
+                kind,
+                stored_for,
+                in_editor,
+            } => {
+                let what = Msg::SecretKindName(*kind).text(Lang::En);
+                let head = if stored_for.is_empty() {
+                    format!("The saved {what} is for another connection and is not used.")
+                } else {
+                    format!("The saved {what} is for {stored_for} and is not used.")
+                };
+                if *in_editor {
+                    format!("{head} Enter it again.")
+                } else {
+                    format!("{head} Edit the host and enter it again.")
+                }
+            }
+            GuiText::RemoteFromNewerVersion => {
+                "Remote management of this host was set up by a newer version of WoL Manager and cannot be used here. Setting it up here replaces that setting."
+                    .to_owned()
+            }
+            GuiText::SignInConfirmed { label, account } => {
+                let who = if account.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({account})")
+                };
+                format!(
+                    "No password is saved for {label}, so it connects with your Windows sign-in{who}. Automatic boot-time checks use it from now on too."
+                )
+            }
+            GuiText::KeyFileOnNetwork(path) => format!(
+                "The key file {path} is on the network and cannot be used (reading it would log on to that computer with your Windows credentials). Copy it to a folder on this PC."
+            ),
+            GuiText::KeyFileIsPublic(path) => format!(
+                "{path} looks like a public key; choose the private key (the file without .pub)."
+            ),
+            GuiText::KeyFileMissing(path) => format!("The key file {path} does not exist."),
+            GuiText::PowerHostChanged { label } => format!(
+                "The settings of {label} (management address, kind or custom command) changed while the confirmation was open, so nothing was sent. Check them and try again."
+            ),
+            GuiText::RemoteBusy { label } => format!(
+                "Another operation of {label} is still running (e.g. checking a restart or shutdown). Try again when it has finished."
+            ),
         }
     }
 }
@@ -194,6 +334,32 @@ mod tests {
             GuiText::LocationChanged,
             GuiText::PathFailed,
             GuiText::SavingOnExit,
+            GuiText::HostKeySaveFailed,
+            GuiText::SecretSaveFailed,
+            GuiText::SecretStale {
+                kind: SecretKind::Login,
+                stored_for: "root@192.168.1.20:22 (SSH)".into(),
+                in_editor: true,
+            },
+            GuiText::SecretStale {
+                kind: SecretKind::Sudo,
+                stored_for: String::new(),
+                in_editor: false,
+            },
+            GuiText::RemoteFromNewerVersion,
+            GuiText::SignInConfirmed {
+                label: "PC".into(),
+                account: r"DESK\me".into(),
+            },
+            GuiText::SignInConfirmed {
+                label: "PC".into(),
+                account: String::new(),
+            },
+            GuiText::KeyFileOnNetwork(r"\\srv\k\id".into()),
+            GuiText::KeyFileIsPublic(r"C:\k\id.pub".into()),
+            GuiText::KeyFileMissing(r"C:\k\id".into()),
+            GuiText::PowerHostChanged { label: "PC".into() },
+            GuiText::RemoteBusy { label: "PC".into() },
         ] {
             assert!(g.text(Lang::En).is_ascii(), "{g:?}");
             assert!(!g.text(Lang::Ja).is_empty());

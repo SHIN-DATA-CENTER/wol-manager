@@ -12,6 +12,10 @@
 //!    (antivirus scanners, sync clients).
 //!
 //! [`Store::poll_changed`] compares a hash of the whole file (FAT32 has 2 s mtime granularity).
+//!
+//! Host ids that reading had to assign (a hand-edited file without `id`s) exist only in
+//! memory until a write; [`Store::persist_assigned_ids`] writes them before anything lasting
+//! (a stored password) is keyed by a host id.
 
 pub mod location;
 pub mod portable;
@@ -98,6 +102,35 @@ pub struct Updated<R> {
     /// `false` when nothing changed and the file was not touched. External changes contained
     /// in `config` are then still reported by the next [`Store::poll_changed`].
     pub written: bool,
+}
+
+/// Value of [`Store::persist_assigned_ids`]: are the host ids in `config.toml`?
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostIdsState {
+    /// Every host's id is in the file: it already was, or it was written now
+    /// ([`Updated::written`]). A missing file counts as saved (it has no hosts).
+    Saved,
+    /// Reading assigned `ids` (hosts without `id`, or repeating another host's id), but the
+    /// file is not written by this build (`reason`: newer `schema_version`, or a folder that
+    /// is not writable). Those ids are deterministic but change when the file changes (hosts
+    /// reordered / renamed): do not key lasting data (passwords) by them. The other hosts'
+    /// ids are in the file.
+    Unsaved {
+        /// Why the file is not written.
+        reason: ReadOnlyReason,
+        /// The ids that exist only in memory.
+        ids: Vec<HostId>,
+    },
+}
+
+impl HostIdsState {
+    /// `true` when `id` is in the file, i.e. not one of the [`HostIdsState::Unsaved`] ids.
+    pub fn is_saved(&self, id: HostId) -> bool {
+        match self {
+            HostIdsState::Saved => true,
+            HostIdsState::Unsaved { ids, .. } => !ids.contains(&id),
+        }
+    }
 }
 
 /// Handle on one settings location. `Send + Sync`; cheap to create.
@@ -276,8 +309,8 @@ fn decode_text(path: &Path, bytes: Vec<u8>) -> Result<String> {
     }
 }
 
-fn parse_at(path: &Path, text: &str) -> Result<(Config, Vec<ParseNote>)> {
-    Config::from_toml(text).map_err(|e| match e {
+fn with_path<T>(path: &Path, r: Result<T>) -> Result<T> {
+    r.map_err(|e| match e {
         Error::ConfigParse {
             line,
             column,
@@ -291,6 +324,26 @@ fn parse_at(path: &Path, text: &str) -> Result<(Config, Vec<ParseNote>)> {
         },
         other => other,
     })
+}
+
+fn parse_at(path: &Path, text: &str) -> Result<(Config, Vec<ParseNote>)> {
+    with_path(path, Config::from_toml(text))
+}
+
+/// [`parse_at`] (the same config) plus the ids [`Config::assign_missing_ids`] gave hosts
+/// that have none, or a repeated one, in the file: they exist only in memory.
+fn parse_assigned_ids(path: &Path, text: &str) -> Result<(Config, Vec<HostId>)> {
+    let (mut cfg, _) = with_path(path, Config::from_toml_keeping_ids(text))?;
+    let in_file: Vec<HostId> = cfg.hosts.iter().map(|h| h.id).collect();
+    cfg.assign_missing_ids();
+    let assigned = cfg
+        .hosts
+        .iter()
+        .zip(in_file)
+        .filter(|(h, id)| h.id != *id)
+        .map(|(h, _)| h.id)
+        .collect();
+    Ok((cfg, assigned))
 }
 
 /// Identity of an issue for "did the update introduce it?" (ignores names / values).
@@ -357,6 +410,22 @@ impl Store {
         }
     }
 
+    /// Why `config` (as read from this location) must not be written, if it must not.
+    fn read_only_reason(&self, config: &Config) -> Option<ReadOnlyReason> {
+        if config.is_newer_schema() {
+            Some(ReadOnlyReason::NewerSchema {
+                found: config.schema_version,
+                supported: SCHEMA_VERSION,
+            })
+        } else if !self.writable() {
+            Some(ReadOnlyReason::NotWritable {
+                dir: self.loc.dir.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
     fn build_loaded(&self, text: Option<&str>) -> Result<Loaded> {
         let path = self.config_path();
         let (config, notes) = match text {
@@ -370,18 +439,7 @@ impl Store {
             warnings.push(LoadWarning::MarkerIgnored { marker: m.clone() });
         }
         warnings.extend(config.validate().into_iter().map(LoadWarning::Issue));
-        let read_only_reason = if config.is_newer_schema() {
-            Some(ReadOnlyReason::NewerSchema {
-                found: config.schema_version,
-                supported: SCHEMA_VERSION,
-            })
-        } else if !self.writable() {
-            Some(ReadOnlyReason::NotWritable {
-                dir: self.loc.dir.clone(),
-            })
-        } else {
-            None
-        };
+        let read_only_reason = self.read_only_reason(&config);
         Ok(Loaded {
             config,
             read_only: read_only_reason.is_some(),
@@ -446,6 +504,74 @@ impl Store {
     /// Errors: [`Error::LockTimeout`], [`Error::ConfigParse`], [`Error::NewerSchema`],
     /// [`Error::Validation`], [`Error::PortableNotWritable`], [`Error::Io`], or the closure's.
     pub fn update<R>(&self, f: impl FnOnce(&mut Config) -> Result<R>) -> Result<Updated<R>> {
+        self.update_inner(false, f)
+    }
+
+    /// Writes `config.toml` when reading it had to assign host ids, and only then: hosts
+    /// without `id` in a hand-edited file, or repeating another host's id
+    /// ([`ParseNote::AssignedIds`] / [`ParseNote::DuplicateIdReplaced`]). Those ids are
+    /// deterministic, but they live only in memory until a write, and [`Store::update`] writes
+    /// nothing when nothing else changed. Call this before keying lasting data by a host id
+    /// (storing a password, [`crate::secret`]); afterwards the ids in [`Updated::config`] are
+    /// the ones in the file.
+    ///
+    /// * Nothing to write (every host has its own id, or no file): `value` =
+    ///   [`HostIdsState::Saved`], `written == false`; the file is only read (no lock).
+    /// * Otherwise the write follows the [`Store::update`] rules: lock, re-read and parse,
+    ///   `config.toml.bak`, atomic replace, never an unreadable result, poll baseline moved.
+    ///   `value` = `Saved`, `written == true` (`false` if another process wrote the ids
+    ///   meanwhile).
+    /// * A file this build does not write (newer `schema_version`, folder not writable) is left
+    ///   alone: `value` = [`HostIdsState::Unsaved`] with the in-memory ids, `written == false`.
+    ///
+    /// [`Updated::config`] is the file's current content (with the ids). **Blocking** (like
+    /// `update`; never on the GUI thread).
+    ///
+    /// Errors: [`Error::ConfigParse`], [`Error::LockTimeout`], [`Error::PortableNotWritable`]
+    /// / [`Error::NewerSchema`] (only when the folder or file changed between the check and
+    /// the write), [`Error::Io`].
+    pub fn persist_assigned_ids(&self) -> Result<Updated<HostIdsState>> {
+        let path = self.config_path();
+        let Some(text) = read_text(&path)? else {
+            return Ok(Updated {
+                value: HostIdsState::Saved,
+                config: Config::default(),
+                written: false,
+            });
+        };
+        let (config, assigned) = parse_assigned_ids(&path, &text)?;
+        if assigned.is_empty() {
+            return Ok(Updated {
+                value: HostIdsState::Saved,
+                config,
+                written: false,
+            });
+        }
+        if let Some(reason) = self.read_only_reason(&config) {
+            return Ok(Updated {
+                value: HostIdsState::Unsaved {
+                    reason,
+                    ids: assigned,
+                },
+                config,
+                written: false,
+            });
+        }
+        let up = self.update_inner(true, |_| Ok(()))?;
+        Ok(Updated {
+            value: HostIdsState::Saved,
+            config: up.config,
+            written: up.written,
+        })
+    }
+
+    /// [`Store::update`]; with `save_ids` it also writes when the only change is the ids that
+    /// reading assigned ([`Store::persist_assigned_ids`]).
+    fn update_inner<R>(
+        &self,
+        save_ids: bool,
+        f: impl FnOnce(&mut Config) -> Result<R>,
+    ) -> Result<Updated<R>> {
         let dir = self.loc.dir.clone();
         fs::create_dir_all(&dir).map_err(|e| write_error("create folder", &dir, &dir, e))?;
         let _lock = lock_dir(&dir, &self.loc.lock_file())?;
@@ -457,10 +583,11 @@ impl Store {
             Err(e) => return Err(Error::io("read", path, e)),
         };
         let old_text = old_bytes.map(|b| decode_text(&path, b)).transpose()?;
-        let mut cfg = match &old_text {
-            Some(t) => parse_at(&path, t)?.0,
-            None => Config::default(),
+        let (mut cfg, assigned) = match &old_text {
+            Some(t) => parse_assigned_ids(&path, t)?,
+            None => (Config::default(), Vec::new()),
         };
+        let force = save_ids && !assigned.is_empty();
         if cfg.is_newer_schema() {
             return Err(Error::NewerSchema {
                 found: cfg.schema_version,
@@ -475,7 +602,7 @@ impl Store {
 
         // No-op updates leave the poll baseline alone: if another process changed the file
         // since the last load / poll, `poll_changed` must still report it.
-        if cfg == before {
+        if cfg == before && !force {
             return Ok(Updated {
                 value,
                 config: cfg,

@@ -22,7 +22,7 @@ export component ModalFrame inherits Rectangle {
     in property <length> card-height: 0px;
     in property <bool> close-on-backdrop: false;
     in property <bool> show-close-button: true;
-    /// True for the confirm dialog, which is always the topmost layer.
+    /// True for the dialogs of the top layer (confirm, power, host key, MAC picker).
     in property <bool> top-layer: false;
     /// False while another dialog (the confirm dialog) is open above this one.
     out property <bool> interactive: root.top-layer || ModalGate.overlay-enabled;
@@ -35,13 +35,18 @@ export component ModalFrame inherits Rectangle {
         scope.focus();
     }
 
-    // A confirm dialog above this overlay took the focus; take it back when it closes.
-    property <bool> confirm-open: AppState.confirm-open;
-    changed confirm-open => {
-        if !self.confirm-open && !root.top-layer {
+    // A top-layer dialog (confirm, power, host key, MAC picker) above this overlay took the
+    // focus; take it back when it closes.
+    property <bool> top-open: ModalGate.top-open;
+    changed top-open => {
+        if !self.top-open && !root.top-layer {
             scope.focus();
+            root.focus-restored();
         }
     }
+    /// A top-layer dialog above this overlay closed and the frame took the focus back (so that
+    /// Esc works); the overlay may move it on to a better control.
+    callback focus-restored();
 
     background: Theme.dim;
 

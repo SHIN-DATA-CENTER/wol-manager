@@ -4,13 +4,16 @@
 //! ASCII-only JSON document on stdout, and errors as one JSON line on stderr. Exit codes are
 //! in [`exit`].
 
+mod backend;
 mod cli;
 mod cmd;
 mod ctrlc;
 mod ctx;
 mod exit;
 mod output;
+mod prompt;
 mod text;
+mod timefmt;
 mod util;
 
 use std::io::{BufRead, IsTerminal};
@@ -45,6 +48,8 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: cli::Cli) -> u8 {
+    // Ctrl+C / closing the window: close the remote connections this process opened first.
+    ctrlc::init();
     let mut ctx = Ctx::new(cli.global.clone());
     if ctx.g.no_color {
         anstream::ColorChoice::Never.write_global();

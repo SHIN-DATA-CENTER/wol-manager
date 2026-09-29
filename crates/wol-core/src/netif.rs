@@ -551,12 +551,13 @@ pub fn select(ifaces: &[NetInterface], filter: &InterfaceFilter) -> Vec<Selected
         .collect()
 }
 
+/// The anonymized interface fixture of the development machine (tests only; also used by
+/// `macfind`): Netbird's WireGuard `wt0` (ifType 53, interface metric 5) routes
+/// 255.255.255.255 before the Ethernet LAN (metric 20).
 #[cfg(test)]
-mod tests {
+pub(crate) mod fixture {
     use super::*;
 
-    /// Anonymized copy of the development machine: Netbird's WireGuard `wt0` (ifType 53,
-    /// interface metric 5) routes 255.255.255.255 before the Ethernet LAN (metric 20).
     const FIXTURE: &str = include_str!("../tests/fixtures/interfaces-wt0-low-metric.toml");
 
     #[derive(Deserialize)]
@@ -578,7 +579,8 @@ mod tests {
         ipv4: Vec<Ipv4Subnet>,
     }
 
-    fn fixture() -> Vec<NetInterface> {
+    /// The fixture as `NetInterface`s.
+    pub(crate) fn interfaces() -> Vec<NetInterface> {
         let f: Fixture = toml::from_str(FIXTURE).unwrap();
         f.interface
             .into_iter()
@@ -595,6 +597,15 @@ mod tests {
                 )
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixture() -> Vec<NetInterface> {
+        super::fixture::interfaces()
     }
 
     fn names(sel: &[Selected]) -> Vec<String> {

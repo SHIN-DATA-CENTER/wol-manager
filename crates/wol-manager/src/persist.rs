@@ -60,6 +60,21 @@ pub enum Op {
     },
     /// `Settings::set_key` for each pair.
     SetSettings(Vec<(String, String)>),
+    /// Pins an SSH host key the user trusted (`remote::trust_host_key`).
+    TrustHostKey {
+        /// Host.
+        id: HostId,
+        /// The received key as an OpenSSH line.
+        line: String,
+        /// Where the key was read and what was pinned then: nothing is pinned when the host
+        /// changed meanwhile (review S4).
+        basis: wol_core::remote::TrustBasis,
+    },
+    /// Removes the pinned SSH host key (`remote::forget_host_key`).
+    ForgetHostKey {
+        /// Host.
+        id: HostId,
+    },
 }
 
 /// What an [`Op`] did.
@@ -71,6 +86,10 @@ pub enum OpOutput {
     Deleted(Box<Host>),
     /// Settings applied.
     Settings,
+    /// A host key was pinned (its fingerprint).
+    KeyTrusted(String),
+    /// The pinned host key was removed (`false`: none was pinned).
+    KeyForgotten(bool),
 }
 
 /// Applies an op to a config (pure; runs inside `Store::update` under the lock).
@@ -95,6 +114,13 @@ pub fn apply_op(cfg: &mut Config, op: &Op) -> wol_core::Result<OpOutput> {
                 cfg.settings.set_key(k, v)?;
             }
             Ok(OpOutput::Settings)
+        }
+        Op::TrustHostKey { id, line, basis } => {
+            wol_core::remote::trust_host_key(cfg, *id, line, basis)
+                .map(|k| OpOutput::KeyTrusted(k.fingerprint))
+        }
+        Op::ForgetHostKey { id } => {
+            wol_core::remote::forget_host_key(cfg, *id).map(OpOutput::KeyForgotten)
         }
     }
 }
@@ -251,6 +277,15 @@ fn run(mut store: Store, flag: Option<PathBuf>, rx: Receiver<Cmd>, sink: &dyn Fn
         let wait = next_poll.saturating_duration_since(Instant::now());
         match rx.recv_timeout(wait) {
             Ok(Cmd::Update { tag, op }) => {
+                // Passwords typed in the editor are stored under the saved host's id, also
+                // after a save that changes nothing in the file: ids that reading a
+                // hand-edited config.toml assigned must be in the file first (a read-only
+                // file fails the update below, so nothing is stored then).
+                if matches!(*op, Op::SaveHost { .. })
+                    && let Err(e) = store.persist_assigned_ids()
+                {
+                    log::warn!("host ids not saved: {e}");
+                }
                 let result = store.update(|c| apply_op(c, &op));
                 if let Err(e) = &result {
                     log::warn!("saving failed: {e}");
@@ -457,6 +492,43 @@ mod tests {
         assert!(h.shutdown(Duration::from_secs(5)));
     }
 
+    /// Review m12: an editor save that changes nothing in a hand-edited file still writes the
+    /// host id that reading assigned (passwords typed in the editor are stored under it).
+    #[test]
+    fn editor_save_writes_assigned_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[[hosts]]\nname = \"NAS\"\nmac = \"00:11:22:33:44:55\"\n[hosts.remote]\nkind = \"ssh\"\n",
+        )
+        .unwrap();
+        let store = Store::new(ConfigLocation::custom(dir.path()));
+        let loaded = store.load().unwrap();
+        let host = &loaded.config.hosts[0];
+        let base = EditBase::of(host);
+        let (sink, rx) = collect();
+        let h = StoreHandle::start(store, None, sink);
+        h.update(
+            1,
+            Op::SaveHost {
+                draft: base.draft.clone(),
+                kind: SaveKind::Edit(base.clone()),
+            },
+        );
+        match rx.recv_timeout(Duration::from_secs(10)).unwrap() {
+            StoreEvent::Updated { tag: 1, result } => {
+                let u = result.unwrap();
+                assert_eq!(u.value, OpOutput::Saved(host.id));
+                assert!(u.config.get(host.id).is_some());
+            }
+            e => panic!("unexpected {e:?}"),
+        }
+        assert!(h.shutdown(Duration::from_secs(5)));
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(&host.id.to_string()), "{text}");
+    }
+
     #[test]
     fn delete_op() {
         let mut cfg = Config::default();
@@ -471,6 +543,85 @@ mod tests {
             apply_op(&mut cfg, &Op::DeleteHost { id }),
             Err(Error::HostIdNotFound(_))
         ));
+    }
+
+    #[test]
+    fn host_key_ops() {
+        // GitHub's published ed25519 host key (public data; a valid key line).
+        const KEY: &str =
+            "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl";
+        let mut cfg = Config::default();
+        let mut h = Host::new("pve", MacAddr::parse("00:11:22:33:44:55").unwrap());
+        h.address = Some(wol_core::HostAddr::parse("192.0.2.30").unwrap());
+        h.remote = Some(wol_core::RemoteConfig::new(wol_core::RemoteKind::Ssh));
+        let id = h.id;
+        let basis = wol_core::remote::TrustBasis::of(&h).unwrap();
+        let mut w = Host::new("win", MacAddr::parse("00:11:22:33:44:66").unwrap());
+        w.remote = Some(wol_core::RemoteConfig::new(wol_core::RemoteKind::Windows));
+        let wid = w.id;
+        cfg.hosts.push(h);
+        cfg.hosts.push(w);
+        let out = apply_op(
+            &mut cfg,
+            &Op::TrustHostKey {
+                id,
+                line: format!("{KEY} comment@host"),
+                basis: basis.clone(),
+            },
+        )
+        .unwrap();
+        assert!(matches!(out, OpOutput::KeyTrusted(fp) if fp.starts_with("SHA256:")));
+        let r = cfg.get(id).unwrap().remote.as_ref().unwrap();
+        assert_eq!(r.host_key.as_deref(), Some(KEY), "comment dropped");
+        // Windows hosts have no host keys; bad lines are refused.
+        assert!(
+            apply_op(
+                &mut cfg,
+                &Op::TrustHostKey {
+                    id: wid,
+                    line: KEY.into(),
+                    basis: basis.clone(),
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            apply_op(
+                &mut cfg,
+                &Op::TrustHostKey {
+                    id,
+                    line: "ssh-ed25519 nope".into(),
+                    basis: basis.clone(),
+                }
+            )
+            .is_err()
+        );
+        // Review S4: the host was re-pointed while the dialog was open: nothing is pinned.
+        let mut moved = cfg.clone();
+        moved.get_mut(id).unwrap().address = Some(wol_core::HostAddr::parse("192.0.2.31").unwrap());
+        assert!(matches!(
+            apply_op(
+                &mut moved,
+                &Op::TrustHostKey {
+                    id,
+                    line: KEY.into(),
+                    basis: wol_core::remote::TrustBasis {
+                        pinned: None,
+                        ..basis.clone()
+                    },
+                }
+            ),
+            Err(Error::RemoteChanged { .. })
+        ));
+        assert_eq!(
+            apply_op(&mut cfg, &Op::ForgetHostKey { id }).unwrap(),
+            OpOutput::KeyForgotten(true)
+        );
+        assert_eq!(cfg.get(id).unwrap().remote.as_ref().unwrap().host_key, None);
+        assert_eq!(
+            apply_op(&mut cfg, &Op::ForgetHostKey { id }).unwrap(),
+            OpOutput::KeyForgotten(false)
+        );
     }
 
     /// The store thread follows the location when resolving it again gives another folder

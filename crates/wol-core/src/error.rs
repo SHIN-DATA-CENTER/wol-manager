@@ -12,7 +12,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-use crate::model::{ConfigIssue, HostId};
+use crate::model::{ConfigIssue, HostId, RemoteKind};
+use crate::remote::{PowerAction, RemoteError, RemoteOp};
 
 /// Result alias using [`Error`].
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -20,7 +21,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 /// Coarse classification of an [`Error`].
 ///
 /// Suggested `wolm` exit codes: `InvalidInput`/`Ambiguous` → 2, `NotFound` → 3, `Timeout` → 4,
-/// `Network` → 5, `Config`/`Io` → 6, `Permission`/`Unsupported` → 7 (not permitted here).
+/// `Network` → 5, `Config`/`Io` → 6, `Permission`/`Unsupported` → 7 (not permitted here),
+/// `Remote` → 1 (the remote host reported a failure).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorKind {
@@ -42,6 +44,9 @@ pub enum ErrorKind {
     Permission,
     /// The operation is not available in this situation (e.g. portable mode on an installed copy).
     Unsupported,
+    /// The remote host reported a failure (a command failed, a shutdown is already in
+    /// progress, unexpected output...). Suggested `wolm` exit code 1.
+    Remote,
 }
 
 /// Which input field a [`FieldError`] refers to.
@@ -72,6 +77,24 @@ pub enum Field {
     Probe,
     /// TCP ports used by the TCP probe.
     TcpPorts,
+    /// Remote management kind (`[hosts.remote]` present or not).
+    RemoteKind,
+    /// Remote management user (Windows account / SSH login).
+    RemoteUser,
+    /// Management address (when different from the address).
+    RemoteAddress,
+    /// SSH port.
+    SshPort,
+    /// SSH private key file.
+    SshKeyFile,
+    /// Pinned SSH host key.
+    SshHostKey,
+    /// How an SSH host gets root rights (sudo mode).
+    SshSudo,
+    /// SSH reboot command override.
+    RebootCommand,
+    /// SSH power-off command override.
+    ShutdownCommand,
 }
 
 /// What is wrong with a field. The GUI maps it 1:1 to a Slint enum and translates it with
@@ -106,6 +129,12 @@ pub enum FieldIssue {
     NameTooLong,
     /// Kana / CJK characters in a technical field: the IME is probably on.
     ImeKana,
+    /// A remote user name contains characters the account system does not allow.
+    InvalidUser,
+    /// A power command override contains a disallowed character or is too long.
+    InvalidCommand,
+    /// Not an OpenSSH public-key line (`ssh-ed25519 AAAA...`).
+    InvalidHostKey,
 }
 
 /// A validation failure for one field.
@@ -166,6 +195,26 @@ fn fmt_parse(
     s.push_str(": ");
     s.push_str(message.trim());
     s
+}
+
+fn fmt_mismatch(p: &HostKeyProblem) -> String {
+    let pinned = p.expected_fingerprint.as_deref().unwrap_or("?");
+    if p.fingerprint.is_empty() {
+        format!(
+            "SSH host {} no longer offers a {} host key (pinned {pinned})",
+            p.host,
+            if p.algorithm.is_empty() {
+                "pinned-type"
+            } else {
+                &p.algorithm
+            }
+        )
+    } else {
+        format!(
+            "SSH host key of {} changed: pinned {pinned}, presented {}",
+            p.host, p.fingerprint
+        )
+    }
 }
 
 /// The crate-wide error type.
@@ -396,6 +445,127 @@ pub enum Error {
         /// Settings folder this start asked for.
         requested: PathBuf,
     },
+
+    /// Remote management is not set up for the host (no `[hosts.remote]` table).
+    #[error("remote management is not set up for {host}")]
+    RemoteNotConfigured {
+        /// Host name.
+        host: String,
+    },
+
+    /// The host has remote management but neither a management address nor an address.
+    #[error("{host} has no address for remote management")]
+    RemoteNoAddress {
+        /// Host name.
+        host: String,
+    },
+
+    /// The operation is not available for this kind of remote management (cancelling a
+    /// shutdown over SSH).
+    #[error("{op:?} is not supported for {kind} hosts ({host})")]
+    RemoteUnsupported {
+        /// Host name.
+        host: String,
+        /// Remote management kind of the host.
+        kind: RemoteKind,
+        /// The operation.
+        op: RemoteOp,
+    },
+
+    /// First contact with an SSH host: its host key is not pinned yet. Show
+    /// [`HostKeyProblem::fingerprint`]; when the user trusts it, pin
+    /// [`HostKeyProblem::openssh_line`] (`remote::trust_host_key`) and retry.
+    #[error("the SSH host key of {} is not trusted yet ({})", .0.host, .0.fingerprint)]
+    UnknownHostKey(Box<HostKeyProblem>),
+
+    /// The SSH host presented a different key than the pinned one (or no longer offers the
+    /// pinned key type). Never replaced automatically; offer "forget host key".
+    #[error("{}", fmt_mismatch(.0))]
+    HostKeyMismatch(Box<HostKeyProblem>),
+
+    /// A host key was not pinned because the host's remote management changed after the key
+    /// was read and shown (another management address / SSH port, or another key pinned
+    /// meanwhile). Connect again and check the key (`remote::trust_host_key`).
+    #[error(
+        "the remote management of {host} changed while its SSH host key was being checked; nothing was pinned"
+    )]
+    RemoteChanged {
+        /// Host name.
+        host: String,
+    },
+
+    /// A remote management operation failed.
+    #[error("{0}")]
+    Remote(Box<RemoteError>),
+
+    /// "MAC from IP" for an address ARP cannot reach (off-link, VPN) and no remote management
+    /// is set up for the host.
+    #[error("the MAC address of {ip} cannot be read by ARP{}; set up remote management for the host", if *.via_vpn { " (VPN)" } else { "" })]
+    MacNeedsRemote {
+        /// The address.
+        ip: Ipv4Addr,
+        /// The address is routed through a VPN / tunnel adapter or lies in 100.64.0.0/10.
+        via_vpn: bool,
+    },
+
+    /// A restart / shutdown was accepted but not confirmed before the deadline (`--wait`).
+    #[error("{label}: {action:?} not confirmed within {secs} s")]
+    VerifyTimeout {
+        /// Host label.
+        label: String,
+        /// The requested action.
+        action: PowerAction,
+        /// Timeout in seconds.
+        secs: u64,
+    },
+
+    /// Windows Credential Manager could not be used.
+    #[error("Credential Manager: {detail}")]
+    SecretStore {
+        /// Classification.
+        failure: SecretStoreFailure,
+        /// English detail for logs (never contains a secret).
+        detail: String,
+    },
+}
+
+/// Details of [`Error::UnknownHostKey`] / [`Error::HostKeyMismatch`] (boxed to keep [`Error`]
+/// small). Everything here is public data, never a secret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HostKeyProblem {
+    /// Host name (label).
+    pub host: String,
+    /// Management address that was contacted.
+    pub address: String,
+    /// SSH port.
+    pub port: u16,
+    /// Key algorithm, e.g. `ssh-ed25519`: unknown key → the received key's; mismatch → the
+    /// pinned key's type (the server presented a different key of that type, or no longer
+    /// offers that type). `""` only when the pinned key could not be read.
+    pub algorithm: String,
+    /// `SHA256:...` fingerprint of the received key (`""` when the server no longer offers
+    /// the pinned key type).
+    pub fingerprint: String,
+    /// The received key as an OpenSSH line without comment: pin this on "trust". `""` for a
+    /// mismatch (a changed key can never be trusted directly).
+    pub openssh_line: String,
+    /// Mismatch: fingerprint of the pinned key.
+    pub expected_fingerprint: Option<String>,
+    /// Unknown key: the same key is already in the user's `~/.ssh/known_hosts` (OpenSSH
+    /// trusts it), so pinning it silently (with a notice) is reasonable.
+    pub in_known_hosts: bool,
+}
+
+/// Why Windows Credential Manager failed ([`Error::SecretStore`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretStoreFailure {
+    /// Not available in this logon session (e.g. a network / SSH logon on this PC, error 1312).
+    Unavailable,
+    /// The secret (or user name) is longer than Credential Manager allows.
+    TooLong,
+    /// Any other failure (see the detail).
+    Other,
 }
 
 impl Error {
@@ -433,6 +603,47 @@ impl Error {
             InstalledCopyRefusesPortable { .. }
             | Unsupported(_)
             | AppRunningWithOtherSettings { .. } => ErrorKind::Unsupported,
+            // "Not set up" and "not available for this kind" are usage problems (exit 2).
+            RemoteNotConfigured { .. } | RemoteNoAddress { .. } | RemoteUnsupported { .. } => {
+                ErrorKind::InvalidInput
+            }
+            UnknownHostKey(_) | HostKeyMismatch(_) | RemoteChanged { .. } => ErrorKind::Permission,
+            Remote(e) => e.kind(),
+            MacNeedsRemote { .. } => ErrorKind::NotFound,
+            VerifyTimeout { .. } => ErrorKind::Timeout,
+            SecretStore { failure, .. } => match failure {
+                SecretStoreFailure::Unavailable => ErrorKind::Permission,
+                SecretStoreFailure::TooLong => ErrorKind::InvalidInput,
+                SecretStoreFailure::Other => ErrorKind::Io,
+            },
+        }
+    }
+
+    /// The remote failure, for [`Error::Remote`].
+    pub fn remote(&self) -> Option<&RemoteError> {
+        match self {
+            Error::Remote(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    /// Host key details of [`Error::UnknownHostKey`] (offer "trust") or
+    /// [`Error::HostKeyMismatch`] (offer "forget").
+    pub fn host_key_problem(&self) -> Option<&HostKeyProblem> {
+        match self {
+            Error::UnknownHostKey(p) | Error::HostKeyMismatch(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// `true` for network-class failures of remote operations (unreachable, timeout,
+    /// connection lost): the host may just be down or booting. Verification loops keep
+    /// polling on these.
+    pub fn is_remote_transient(&self) -> bool {
+        match self {
+            Error::Remote(e) => e.kind() == ErrorKind::Network,
+            Error::Resolve { .. } | Error::Network { .. } => true,
+            _ => false,
         }
     }
 

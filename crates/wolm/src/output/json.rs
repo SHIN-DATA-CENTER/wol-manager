@@ -25,11 +25,27 @@ pub fn escape_non_ascii(s: &str) -> String {
 
 /// The `--json` error line: `{"error":{"kind":..,"message":..,"exit_code":..}}`.
 pub fn error_line(kind: &str, message: &str, exit_code: u8) -> String {
+    error_line_with(kind, message, exit_code, None, None)
+}
+
+/// [`error_line`] with the optional `hint` (a command that fixes it) and `host_key`
+/// (SSH host-key failures: host, address, port, algorithm, fingerprint, ...).
+pub fn error_line_with(
+    kind: &str,
+    message: &str,
+    exit_code: u8,
+    hint: Option<&str>,
+    host_key: Option<&wol_core::HostKeyProblem>,
+) -> String {
     #[derive(Serialize)]
     struct E<'a> {
         kind: &'a str,
         message: &'a str,
         exit_code: u8,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        hint: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        host_key: Option<&'a wol_core::HostKeyProblem>,
     }
     #[derive(Serialize)]
     struct Doc<'a> {
@@ -40,6 +56,8 @@ pub fn error_line(kind: &str, message: &str, exit_code: u8) -> String {
             kind,
             message,
             exit_code,
+            hint,
+            host_key,
         },
     })
 }

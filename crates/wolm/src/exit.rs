@@ -1,7 +1,7 @@
 //! Exit codes (plan §6) and the error type of the commands.
 
 use wol_core::i18n::{self, Lang, Msg};
-use wol_core::{Error, ErrorKind};
+use wol_core::{Error, ErrorKind, HostKeyProblem};
 
 use crate::text::Text;
 
@@ -38,8 +38,12 @@ pub enum Failure {
     Usage(String),
     /// Something the CLI looked for is missing (exit 3).
     NotFound(String),
+    /// Refused for trust reasons, e.g. a host key whose fingerprint does not match (exit 7).
+    Permission(String),
     /// A bug (exit 10).
     Internal(String),
+    /// Another failure, with a hint of its own (shown after it; review R1).
+    WithHint(Box<Failure>, String),
 }
 
 impl From<Error> for Failure {
@@ -57,6 +61,8 @@ pub fn code_for_kind(kind: ErrorKind) -> u8 {
         ErrorKind::Network => NETWORK,
         ErrorKind::Config | ErrorKind::Io => CONFIG,
         ErrorKind::Permission | ErrorKind::Unsupported => PERMISSION,
+        // v0.2.0: the remote host reported a failure (wol-core suggests exit 1).
+        ErrorKind::Remote => NEGATIVE,
     }
 }
 
@@ -71,6 +77,7 @@ fn kind_name(kind: ErrorKind) -> &'static str {
         ErrorKind::Io => "io",
         ErrorKind::Permission => "permission",
         ErrorKind::Unsupported => "unsupported",
+        ErrorKind::Remote => "remote",
     }
 }
 
@@ -81,7 +88,9 @@ impl Failure {
             Failure::Core(e) => code_for_kind(e.kind()),
             Failure::Usage(_) => USAGE,
             Failure::NotFound(_) => NOT_FOUND,
+            Failure::Permission(_) => PERMISSION,
             Failure::Internal(_) => INTERNAL,
+            Failure::WithHint(f, _) => f.exit_code(),
         }
     }
 
@@ -91,7 +100,9 @@ impl Failure {
             Failure::Core(e) => kind_name(e.kind()),
             Failure::Usage(_) => "usage",
             Failure::NotFound(_) => "not_found",
+            Failure::Permission(_) => "permission",
             Failure::Internal(_) => "internal",
+            Failure::WithHint(f, _) => f.kind(),
         }
     }
 
@@ -99,8 +110,9 @@ impl Failure {
     pub fn message(&self, lang: Lang) -> String {
         match self {
             Failure::Core(e) => i18n::describe_error(e, lang),
-            Failure::Usage(m) | Failure::NotFound(m) => m.clone(),
+            Failure::Usage(m) | Failure::NotFound(m) | Failure::Permission(m) => m.clone(),
             Failure::Internal(m) => Text::Internal { message: m }.text(lang),
+            Failure::WithHint(f, _) => f.message(lang),
         }
     }
 
@@ -112,8 +124,86 @@ impl Failure {
                 .into_iter()
                 .map(|fe| Msg::FieldError(fe).text(lang))
                 .collect(),
+            Failure::WithHint(f, _) => f.lines(lang),
             _ => vec![self.message(lang)],
         }
+    }
+
+    /// The command that fixes the failure, shown after it (SSH host keys).
+    pub fn hint(&self, lang: Lang) -> Option<String> {
+        match self {
+            Failure::WithHint(_, h) => Some(h.clone()),
+            Failure::Core(Error::UnknownHostKey(p)) => Some(
+                Text::TrustHint {
+                    host: &shell_arg(&p.host),
+                }
+                .text(lang),
+            ),
+            Failure::Core(Error::HostKeyMismatch(p)) => Some(
+                Text::ForgetHint {
+                    host: &shell_arg(&p.host),
+                }
+                .text(lang),
+            ),
+            // A stored password that was not used (another account / address), or none for
+            // the configured Windows account: store it (again).
+            Failure::Core(Error::Remote(e)) => {
+                use wol_core::remote::{RemoteFailure as F, RemoteHint as H};
+                if e.failure == F::SignInNotConfirmed {
+                    return Some(
+                        Text::SignInConfirmHint {
+                            host: &shell_arg(&e.host),
+                        }
+                        .text(lang),
+                    );
+                }
+                let kind = match (&e.failure, e.hint) {
+                    (F::SecretMismatch { secret, .. }, _) => Some(*secret),
+                    (F::PasswordRequired { .. }, _) | (_, Some(H::StoredSecretNotUsed)) => {
+                        Some(wol_core::secret::SecretKind::Login)
+                    }
+                    _ => None,
+                }?;
+                Some(
+                    Text::CredSetHint {
+                        host: &shell_arg(&e.host),
+                        kind,
+                    }
+                    .text(lang),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    /// Host key details of an SSH host-key failure (public data; for `--json`).
+    pub fn host_key(&self) -> Option<&HostKeyProblem> {
+        match self {
+            Failure::Core(e) => e.host_key_problem(),
+            Failure::WithHint(f, _) => f.host_key(),
+            _ => None,
+        }
+    }
+
+    /// `true` for a remote failure of this kind.
+    pub fn is_remote(&self, failure: &wol_core::remote::RemoteFailure) -> bool {
+        match self {
+            Failure::WithHint(f, _) => f.is_remote(failure),
+            _ => matches!(self, Failure::Core(Error::Remote(e)) if e.failure == *failure),
+        }
+    }
+}
+
+/// A host name as a command-line argument: in double quotes unless it is a plain word.
+pub fn shell_arg(name: &str) -> String {
+    let plain = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_'));
+    if plain {
+        name.to_owned()
+    } else {
+        format!("\"{}\"", name.replace('"', ""))
     }
 }
 
@@ -144,6 +234,33 @@ mod tests {
         );
         assert_eq!(Failure::from(Error::NoDestinations).exit_code(), 5);
         assert_eq!(Failure::Internal("x".into()).exit_code(), 10);
+        assert_eq!(Failure::Permission("x".into()).exit_code(), 7);
+        assert_eq!(Failure::Permission("x".into()).kind(), "permission");
+    }
+
+    #[test]
+    fn host_key_failures_carry_a_hint() {
+        let p = HostKeyProblem {
+            host: "My NAS".into(),
+            address: "192.0.2.5".into(),
+            port: 22,
+            algorithm: "ssh-ed25519".into(),
+            fingerprint: "SHA256:abc".into(),
+            openssh_line: "ssh-ed25519 AAAA".into(),
+            expected_fingerprint: None,
+            in_known_hosts: false,
+        };
+        let f = Failure::from(Error::UnknownHostKey(Box::new(p.clone())));
+        assert_eq!(f.exit_code(), 7);
+        let hint = f.hint(Lang::En).unwrap();
+        assert!(hint.contains("wolm ssh trust \"My NAS\""), "{hint}");
+        assert!(f.message(Lang::En).contains("SHA256:abc"));
+        assert_eq!(f.host_key().unwrap().fingerprint, "SHA256:abc");
+        let f = Failure::from(Error::HostKeyMismatch(Box::new(p)));
+        assert!(f.hint(Lang::Ja).unwrap().contains("wolm ssh forget"));
+        assert_eq!(shell_arg("nas-1.lan"), "nas-1.lan");
+        assert_eq!(shell_arg("書斎"), "書斎");
+        assert_eq!(shell_arg("a b"), "\"a b\"");
     }
 
     #[test]

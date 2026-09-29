@@ -18,9 +18,21 @@ Examples:
   wolm path add --scope user
   wolm completions | Out-String | Invoke-Expression                   (PowerShell)
 
-Exit codes: 0 ok, 1 negative result (no change / host down / not on PATH), 2 usage or invalid
-input, 3 not found, 4 --wait timeout, 5 network, 6 config / IO / registry, 7 permission,
-10 internal error.";
+Remote management (restart / shutdown / boot time / MAC through the host):
+  wolm remote set PC --kind windows --user PC\\admin --address 100.105.1.2
+  wolm cred set PC                                   (asks for the password; never an argument)
+  wolm remote test PC
+  wolm boot-time PC
+  wolm restart PC --wait
+  wolm shutdown PC --delay 60 --message \"Maintenance\" --yes
+  wolm remote set NAS --kind ssh --key-file $env:USERPROFILE\\.ssh\\id_ed25519  (PowerShell)
+  wolm remote set NAS --kind ssh --key-file %USERPROFILE%\\.ssh\\id_ed25519     (cmd.exe)
+  wolm ssh trust NAS
+  wolm mac PC --save
+
+Exit codes: 0 ok, 1 negative result (no change / host down / not on PATH / refused by the
+remote host), 2 usage or invalid input, 3 not found, 4 --wait timeout, 5 network, 6 config /
+IO / registry, 7 permission / authentication / SSH host key, 10 internal error.";
 
 /// WoL Manager command-line interface: wake computers with magic packets and manage the
 /// host list shared with the WoL Manager app.
@@ -133,6 +145,333 @@ pub enum Command {
 
     /// Print magic packets received on a UDP port (diagnostics)
     Listen(ListenArgs),
+
+    /// Restart hosts through their remote management (asks for confirmation)
+    ///
+    /// Windows hosts get a countdown with a message (--delay, --message) and can be cancelled
+    /// with `wolm abort` until it ends. SSH hosts run the platform command (or the host's
+    /// custom command, which the confirmation shows; with --yes it is printed on stderr) with
+    /// root rights about 2 s later (the Windows options do not apply). Unsaved work may be
+    /// lost.
+    Restart(PowerArgs),
+
+    /// Shut hosts down through their remote management (asks for confirmation)
+    ///
+    /// Same options as `restart`. With --wait, the shutdown counts as confirmed when the host
+    /// stops answering three checks in a row.
+    Shutdown(PowerArgs),
+
+    /// Cancel a pending restart / shutdown countdown of a Windows host (exit 1 when nothing
+    /// was pending)
+    Abort(AbortArgs),
+
+    /// Show when hosts were started (boot time on this PC's clock, and uptime)
+    #[command(visible_alias = "uptime")]
+    BootTime(BootTimeArgs),
+
+    /// Find the MAC address of a host or an address: ARP on the local network, else the
+    /// host's remote management (VPN peers)
+    Mac(MacArgs),
+
+    /// Set up remote management of a host (Windows or SSH)
+    #[command(subcommand)]
+    Remote(RemoteCmd),
+
+    /// Passwords for remote management (Windows Credential Manager; never in config.toml)
+    #[command(subcommand)]
+    Cred(CredCmd),
+
+    /// SSH host keys of hosts managed over SSH
+    #[command(subcommand)]
+    Ssh(SshCmd),
+}
+
+/// `restart` / `shutdown`.
+#[derive(Debug, Args)]
+pub struct PowerArgs {
+    /// Registered hosts (name, id, id prefix or MAC) with remote management
+    #[arg(value_name = "HOST", required = true)]
+    pub hosts: Vec<String>,
+
+    /// Windows: countdown before it happens, 0 to 600 s, e.g. 30, 2m (default:
+    /// remote.shutdown_delay_secs)
+    #[arg(long, value_name = "SECS")]
+    pub delay: Option<String>,
+
+    /// Windows: no countdown (same as --delay 0; cannot be cancelled)
+    #[arg(long, conflicts_with = "delay")]
+    pub now: bool,
+
+    /// Windows: close applications without asking; unsaved work is lost (default:
+    /// remote.force_apps_closed)
+    #[arg(long)]
+    pub force: bool,
+
+    /// Windows: let applications ask to save first (the restart may then not happen)
+    #[arg(long, conflicts_with = "force")]
+    pub no_force: bool,
+
+    /// Windows: message shown on the host during the countdown
+    #[arg(long, value_name = "TEXT", allow_hyphen_values = true)]
+    pub message: Option<String>,
+
+    /// Wait until the restart / shutdown is confirmed (exit 4 on timeout, Ctrl+C cancels)
+    #[arg(long)]
+    pub wait: bool,
+
+    /// How long --wait waits, e.g. 5m (default: remote.restart_verify_timeout_secs or
+    /// remote.shutdown_verify_timeout_secs; a Windows countdown is added)
+    #[arg(long, value_name = "DURATION", requires = "wait")]
+    pub timeout: Option<String>,
+
+    /// Do not ask for confirmation (required when stdin is not a console)
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct AbortArgs {
+    /// Registered Windows host with remote management
+    #[arg(value_name = "HOST")]
+    pub host: String,
+}
+
+#[derive(Debug, Args)]
+pub struct BootTimeArgs {
+    /// Registered hosts with remote management (default: every such host; then a Windows
+    /// host without a saved password is only asked when the use of your Windows sign-in was
+    /// confirmed for it, e.g. by naming it once)
+    #[arg(value_name = "HOST")]
+    pub hosts: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct MacArgs {
+    /// Registered host (name, id, id prefix or MAC), or an IPv4 address / host name
+    #[arg(value_name = "HOST|IP")]
+    pub target: String,
+
+    /// Store the MAC address in the host (the best candidate, or the one chosen with
+    /// --pick; asks on a console when several fit equally well)
+    #[arg(long)]
+    pub save: bool,
+
+    /// Choose candidate N (1 = first in the list)
+    #[arg(long, value_name = "N")]
+    pub pick: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RemoteCmd {
+    /// Set up or change the remote management of a host (only the given fields change)
+    ///
+    /// Windows hosts: restart / shutdown / boot time over SMB (TCP 445) and the MAC over WMI,
+    /// with an administrator account of the host (store its password with `wolm cred set`;
+    /// without one, the current Windows sign-in is used). SSH hosts (Linux, Proxmox, NAS,
+    /// FreeBSD): a key file and / or a password, root or sudo. Values are checked like in
+    /// the app; Windows PowerShell 5.1 drops "" arguments, so use the --clear-* flags.
+    Set(RemoteSetArgs),
+    /// Turn remote management off (asks first); also deletes the host's stored passwords and
+    /// its trusted SSH host key
+    Clear(RemoteClearArgs),
+    /// Show the remote management of a host and which passwords are stored (never the
+    /// passwords; exit 1 when it is not set up)
+    Show(RemoteHostArg),
+    /// Connect and show the OS, the boot time and whether the account has administrator /
+    /// root rights
+    Test(RemoteHostArg),
+}
+
+#[derive(Debug, Args)]
+pub struct RemoteHostArg {
+    /// Name, id, id prefix or MAC
+    #[arg(value_name = "HOST")]
+    pub host: String,
+}
+
+#[derive(Debug, Args)]
+pub struct RemoteClearArgs {
+    /// Name, id, id prefix or MAC
+    #[arg(value_name = "HOST")]
+    pub host: String,
+
+    /// Do not ask for confirmation (required when stdin is not a console)
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct RemoteSetArgs {
+    /// Name, id, id prefix or MAC
+    #[arg(value_name = "HOST")]
+    pub host: String,
+
+    /// windows or ssh (needed when the host has no remote management yet)
+    #[arg(long, value_name = "KIND")]
+    pub kind: Option<String>,
+
+    /// Windows: account (PC\user, DOMAIN\user, user@domain; default: the account stored with
+    /// the password, else the current sign-in). SSH: login user (default: root)
+    #[arg(long, value_name = "USER", conflicts_with = "clear_user")]
+    pub user: Option<String>,
+
+    /// Address for remote management when it differs from the host's address (e.g. the
+    /// VPN address)
+    #[arg(long, value_name = "IPV4|NAME", conflicts_with = "clear_address")]
+    pub address: Option<String>,
+
+    /// SSH port (default: 22)
+    #[arg(long, value_name = "PORT", conflicts_with = "clear_port")]
+    pub port: Option<String>,
+
+    /// SSH private key file (default: password login); its passphrase goes to `wolm cred
+    /// set HOST --kind key-passphrase`
+    #[arg(long, value_name = "PATH", conflicts_with = "clear_key_file")]
+    pub key_file: Option<String>,
+
+    /// SSH: how restart / shutdown get root rights [auto, root, nopasswd, password, separate]
+    #[arg(long, value_name = "MODE")]
+    pub sudo: Option<String>,
+
+    /// SSH: command that restarts the host instead of the platform default (NAS firmwares)
+    #[arg(
+        long,
+        value_name = "COMMAND",
+        allow_hyphen_values = true,
+        conflicts_with = "clear_reboot_command"
+    )]
+    pub reboot_command: Option<String>,
+
+    /// SSH: command that powers the host off instead of the platform default
+    #[arg(
+        long,
+        value_name = "COMMAND",
+        allow_hyphen_values = true,
+        conflicts_with = "clear_shutdown_command"
+    )]
+    pub shutdown_command: Option<String>,
+
+    /// Remove the user name
+    #[arg(long)]
+    pub clear_user: bool,
+
+    /// Use the host's address again
+    #[arg(long)]
+    pub clear_address: bool,
+
+    /// Use port 22 again
+    #[arg(long)]
+    pub clear_port: bool,
+
+    /// Remove the key file (password login)
+    #[arg(long)]
+    pub clear_key_file: bool,
+
+    /// Use the platform's restart command again
+    #[arg(long)]
+    pub clear_reboot_command: bool,
+
+    /// Use the platform's power-off command again
+    #[arg(long)]
+    pub clear_shutdown_command: bool,
+
+    /// Replace remote settings that a newer version of WoL Manager wrote without asking
+    /// (required when stdin is not a console)
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CredCmd {
+    /// Store a password for a host (asked on the console, or read with --password-stdin;
+    /// never given as an argument)
+    ///
+    /// Windows hosts: the administrator account's password (login). SSH hosts: the login
+    /// password, the key passphrase (key-passphrase) or a separate sudo password (sudo).
+    /// Passwords are kept in Windows Credential Manager for this Windows user on this PC; they
+    /// are not in config.toml, exports or the portable data folder.
+    Set(CredSetArgs),
+    /// Delete stored passwords of a host (every kind without --kind; exit 1 when none was
+    /// stored)
+    Delete(CredDeleteArgs),
+    /// List the stored passwords: host, kind and user name (never the passwords)
+    List,
+    /// Delete stored passwords of hosts that are no longer in these settings
+    ///
+    /// Passwords of a host that still exists are kept, also when it has no remote management
+    /// (`wolm cred delete HOST` removes those). Other settings folders (portable copies,
+    /// --config-dir) share the stored passwords of this Windows user: prune only with the
+    /// settings that have all your hosts.
+    Prune(CredPruneArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct CredSetArgs {
+    /// Name, id, id prefix or MAC
+    #[arg(value_name = "HOST")]
+    pub host: String,
+
+    /// login, key-passphrase or sudo
+    #[arg(long, value_name = "KIND", default_value = "login")]
+    pub kind: String,
+
+    /// Account stored with the password (default: the host's remote user; Windows: else the
+    /// current sign-in, SSH: else root)
+    #[arg(long, value_name = "USER")]
+    pub user: Option<String>,
+
+    /// Read the password from stdin (UTF-8, at most 64 KiB, one trailing line break removed)
+    #[arg(long)]
+    pub password_stdin: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CredDeleteArgs {
+    /// Name, id, id prefix or MAC (or the full id of a removed host)
+    #[arg(value_name = "HOST")]
+    pub host: String,
+
+    /// Only this kind: login, key-passphrase or sudo
+    #[arg(long, value_name = "KIND")]
+    pub kind: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct CredPruneArgs {
+    /// Only list what would be deleted
+    #[arg(short = 'n', long)]
+    pub dry_run: bool,
+
+    /// Do not ask for confirmation (required when stdin is not a console)
+    #[arg(short = 'y', long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SshCmd {
+    /// Read the SSH host key of a host (without logging in), show its fingerprint and trust it
+    ///
+    /// Compare the fingerprint with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the
+    /// host. Without --fingerprint or --accept-new it asks on the console.
+    Trust(SshTrustArgs),
+    /// Forget the trusted SSH host key of a host (the next connection asks again; exit 1 when
+    /// none was trusted)
+    Forget(RemoteHostArg),
+}
+
+#[derive(Debug, Args)]
+pub struct SshTrustArgs {
+    /// Name, id, id prefix or MAC
+    #[arg(value_name = "HOST")]
+    pub host: String,
+
+    /// Trust the key only if it has this fingerprint (SHA256:... as ssh-keygen -lf prints it)
+    #[arg(long, value_name = "SHA256:...", conflicts_with = "accept_new")]
+    pub fingerprint: Option<String>,
+
+    /// Trust the key the host presents without asking (only when no key is trusted yet)
+    #[arg(long)]
+    pub accept_new: bool,
 }
 
 #[derive(Debug, Args)]
@@ -259,7 +598,9 @@ pub struct HostFields {
     #[arg(long, value_name = "MAC")]
     pub mac: Option<String>,
 
-    /// Look up the MAC address from the (IPv4) address with ARP; the computer must be on
+    /// Look up the MAC address from the address: ARP on the local network (the computer must
+    /// be on), else, for `edit`, the host's remote management (VPN peers; a new host behind a
+    /// VPN: add it with a placeholder MAC, set up `wolm remote`, then `wolm mac HOST --save`)
     #[arg(long, conflicts_with = "mac")]
     pub arp: bool,
 

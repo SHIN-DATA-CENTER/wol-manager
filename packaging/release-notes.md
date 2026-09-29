@@ -1,5 +1,26 @@
 [![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev)
 
+## What's new / 主な変更点
+
+<!-- Update this section for every release. -->
+
+- **Remote management**: restart, shut down and read the boot time of registered hosts, both
+  Windows hosts (SMB / RPC, WMI) and Linux / Proxmox VE / NAS hosts (built-in SSH), from the
+  app and from `wolm`.
+- **Fixed**: "Get from IP" (MAC address) for hosts behind a VPN such as NetBird. With remote
+  management set up, the MAC address of the host's physical adapter is read from the host.
+- **リモート管理**: 登録ホストの再起動・シャットダウン・起動時刻の取得（Windows: SMB / RPC・WMI、
+  Linux / Proxmox VE / NAS: 組み込みの SSH）。GUI と `wolm` の両方から使えます。
+- **修正**: NetBird などの VPN 越しのホストで「IP から取得」（MAC アドレス）ができなかった問題。
+  リモート管理を設定すると、相手の物理 NIC の MAC アドレスを取得します。
+
+Upgrade notes and all changes / アップグレード時の注意と変更の一覧:
+[CHANGELOG.md](https://github.com/SHIN-DATA-CENTER/wol-manager/blob/v<version>/CHANGELOG.md)
+
+Saved passwords stay in Windows Credential Manager on each PC; they are not in the portable
+`data` folder or in exports. / 保存したパスワードは各 PC の Windows 資格情報マネージャーに
+保存され、ポータブル版の `data` フォルダーやエクスポートには含まれません。
+
 ## Downloads / ダウンロード
 
 | File | |

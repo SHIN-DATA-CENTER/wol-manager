@@ -1,0 +1,13 @@
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY (noise from .bashrc)
+WOLM1 hdr os=Linux uid=1000
+WOLM1 route enp1s0 100
+WOLM1 route wt0 200
+WOLM1 if docker0 mac=02:42:ac:11:00:01 type=1 kind=bridge aat=3 oper=down carrier=0 lower=- perm=- wol=-
+WOLM1 if enp1s0 mac=52:54:00:12:34:56 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=52:54:00:12:34:56 wol=-
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if wt0 mac=- type=65534 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet enp1s0 192.168.10.21/24
+WOLM1 inet wt0 100.105.20.3/16
+WOLM1 inet docker0 172.17.0.1/16
+WOLM1 end

@@ -5,14 +5,85 @@
 
 import { Button, LineEdit, TextEdit, CheckBox, ComboBox, ScrollView } from "std-widgets.slint";
 import { CoolIcons } from "@coolicons";
-import { EditorMode, FieldIssue, ArpStatus, OverlayKind, InterfaceOption } from "../types.slint";
+import {
+    EditorMode, FieldIssue, ArpStatus, OverlayKind, InterfaceOption, RemoteKind, SudoMode,
+    TestStatus, ToastKind,
+} from "../types.slint";
 import { Theme } from "../theme.slint";
 import { AppState, EditorState, Validator, SettingsState, Texts } from "../state.slint";
 import {
     Field, HintText, IssueText, Icon, IconButton, Divider, DropdownButton, PopupFrame, PopupItem,
-    PopupListKeys, BusySpinner,
+    PopupListKeys, BusySpinner, InfoBar, WrapBox, DetailRow,
 } from "../widgets.slint";
 import { ModalFrame, ModalFooter } from "modal.slint";
+
+/// v0.2: password field for a stored secret. Rust never sends a stored secret back: `saved`
+/// only says that one exists (placeholder "Saved" + a Delete button). Empty = keep it, typed =
+/// replace it. "Delete" clears the field and marks the secret for deletion on save; the field is
+/// disabled until "Undo", so a typed value and the delete flag never coexist.
+component SecretField inherits Field {
+    in-out property <string> text;
+    in property <bool> saved;
+    in-out property <bool> delete;
+    in property <bool> enabled: true;
+    /// Placeholder while nothing is saved.
+    in property <string> empty-placeholder;
+    /// Accessible names of the Delete / Undo buttons, e.g. "Delete saved password" /
+    /// "Keep the saved password".
+    in property <string> delete-label;
+    in property <string> undo-label;
+    callback accepted();
+    /// The typed text changed, or Delete / Undo was clicked (the draft changed).
+    callback edited(text: string);
+
+    HorizontalLayout {
+        spacing: 8px;
+        LineEdit {
+            accessible-label: root.label;
+            accessible-description: root.delete ? @tr("The saved value is deleted when you save the host. Choose Undo to keep it.")
+                : root.saved ? @tr("Saved. Leave the field empty to keep it, or type a new one to replace it.")
+                : "";
+            enabled: root.enabled && !root.delete;
+            input-type: InputType.password;
+            text <=> root.text;
+            placeholder-text: root.delete ? @tr("Deleted on save")
+                : root.saved ? @tr("Saved")
+                : root.empty-placeholder;
+            edited(t) => { root.edited(t); }
+            accepted => { root.accepted(); }
+        }
+        if root.saved : Button {
+            text: root.delete ? @tr("Undo") : @tr("Delete");
+            accessible-label: root.delete ? root.undo-label : root.delete-label;
+            enabled: root.enabled;
+            clicked => {
+                if !root.delete {
+                    root.text = "";
+                }
+                root.delete = !root.delete;
+                root.edited(root.text);
+            }
+        }
+    }
+}
+
+/// v0.2: small "i" + text note inside the remote section.
+component NoteText inherits HorizontalLayout {
+    in property <string> text;
+    in property <image> icon: CoolIcons.info;
+    in property <color> tint: Theme.info-fg;
+    spacing: 8px;
+    Icon {
+        source: root.icon;
+        size: 14px;
+        tint: root.tint;
+        cross-axis-self-alignment: start;
+    }
+    HintText {
+        text: root.text;
+        horizontal-stretch: 1;
+    }
+}
 
 /// Adapter pinning picker: Automatic / keep the existing pinning / one adapter.
 /// List positions: 0 = automatic (-1), [1 = keep (-2)], then the adapters.
@@ -92,6 +163,7 @@ component ExpanderHeader inherits Rectangle {
     forward-focus: fs;
     accessible-role: button;
     accessible-label: root.title;
+    accessible-description: root.summary;
     accessible-enabled: root.enabled;
     accessible-expandable: true;
     accessible-expanded: root.expanded;
@@ -192,6 +264,20 @@ export component HostEditorOverlay inherits ModalFrame {
             || EditorState.secureon-issue != FieldIssue.none || EditorState.tcp-ports-issue != FieldIssue.none {
             EditorState.advanced-open = true;
         }
+        // v0.2: remote fields only count while remote management is on.
+        if EditorState.remote-kind == RemoteKind.none {
+            EditorState.remote-address-issue = FieldIssue.none;
+            EditorState.remote-user-issue = FieldIssue.none;
+            EditorState.ssh-port-issue = FieldIssue.none;
+        } else {
+            EditorState.remote-address-issue = Validator.check-address(EditorState.remote-address);
+            EditorState.remote-user-issue = Validator.check-remote-user(EditorState.remote-user, EditorState.remote-kind);
+            EditorState.ssh-port-issue = EditorState.remote-kind == RemoteKind.ssh ? Validator.check-port(EditorState.ssh-port) : FieldIssue.none;
+            if EditorState.remote-address-issue != FieldIssue.none || EditorState.remote-user-issue != FieldIssue.none
+                || EditorState.ssh-port-issue != FieldIssue.none {
+                EditorState.remote-open = true;
+            }
+        }
     }
 
     function save() {
@@ -202,10 +288,68 @@ export component HostEditorOverlay inherits ModalFrame {
         EditorState.save();
     }
 
-    close-requested => { root.cancel(); }
-    init => { name-edit.focus(); }
+    /// v0.2: a remote field changed: an earlier "Test connection" result no longer applies.
+    function remote-edited() {
+        if EditorState.test-status != TestStatus.busy {
+            EditorState.test-status = TestStatus.idle;
+        }
+    }
 
-    ScrollView {
+    /// v0.2: "Set up remote management" (VPN notice): expand the section and scroll to it.
+    function reveal-remote() {
+        EditorState.remote-open = true;
+        remote-header.focus();
+        // Scroll once the new section is laid out (next timer tick).
+        root.reveal-pending = true;
+    }
+    property <bool> reveal-pending;
+    Timer {
+        interval: 20ms;
+        running: root.reveal-pending;
+        triggered => {
+            root.reveal-pending = false;
+            sv.content-y = max(sv.visible-height - content.preferred-height, 8px - remote-header.y);
+        }
+    }
+
+    /// v0.2: something of the host's remote management is stored outside the draft fields
+    /// (Credential Manager secrets, pinned host key); kind None removes it on save.
+    property <bool> has-remote-secrets: EditorState.remote-password-saved || EditorState.ssh-key-passphrase-saved
+        || EditorState.ssh-sudo-password-saved || EditorState.host-key-fingerprint != "";
+
+    /// v0.2: "Get from IP" works for an IPv4 address (ARP) or through remote management.
+    property <bool> lookup-possible: Validator.is-ipv4(EditorState.address)
+        || (EditorState.remote-kind != RemoteKind.none && (EditorState.address != "" || EditorState.remote-address != ""));
+
+    // v0.2: after a choice in the MAC picker the focus goes back to the MAC field.
+    property <bool> picker-open: EditorState.mac-picker-open;
+    property <bool> refocus-mac;
+    changed picker-open => {
+        if !self.picker-open {
+            root.refocus-mac = true;
+            mac-edit.focus();
+        }
+    }
+    focus-restored => {
+        if root.refocus-mac {
+            root.refocus-mac = false;
+            mac-edit.focus();
+        }
+    }
+
+    close-requested => { root.cancel(); }
+    init => {
+        // "Set up remote management…" (AppState.setup-remote) opens the editor with the section
+        // expanded for an unmanaged host: show the section instead of the name field, which
+        // would leave it below the fold. Any other opening starts at the name.
+        if EditorState.remote-open && EditorState.remote-kind == RemoteKind.none {
+            root.reveal-remote();
+        } else {
+            name-edit.focus();
+        }
+    }
+
+    sv := ScrollView {
         vertical-stretch: 1;
         horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
         // The fluent ScrollView does not forward its content size; the card sizes to it.
@@ -244,7 +388,7 @@ export component HostEditorOverlay inherits ModalFrame {
                 hint: EditorState.arp-status == ArpStatus.found ? @tr("Found the MAC address of this IP address.") : "";
                 HorizontalLayout {
                     spacing: 8px;
-                    LineEdit {
+                    mac-edit := LineEdit {
                         accessible-label: mac-field.label;
                         enabled: root.interactive;
                         text <=> EditorState.mac;
@@ -258,7 +402,7 @@ export component HostEditorOverlay inherits ModalFrame {
                         text: @tr("Get from IP");
                         icon: CoolIcons.search;
                         colorize-icon: true;
-                        enabled: root.interactive && EditorState.arp-status != ArpStatus.busy && Validator.is-ipv4(EditorState.address);
+                        enabled: root.interactive && EditorState.arp-status != ArpStatus.busy && root.lookup-possible;
                         clicked => { EditorState.lookup-mac(EditorState.address); }
                     }
                     if EditorState.arp-status == ArpStatus.busy : BusySpinner {
@@ -273,8 +417,23 @@ export component HostEditorOverlay inherits ModalFrame {
                 if EditorState.arp-status == ArpStatus.not-local : IssueText {
                     text: @tr("“Get from IP” only works for addresses in a local subnet of this PC.");
                 }
-                if EditorState.arp-status == ArpStatus.failed : IssueText {
-                    text: @tr("The MAC address could not be looked up.");
+                // v0.2: remote lookups can fail with a (long) Rust message.
+                if EditorState.arp-status == ArpStatus.failed : WrapBox {
+                    IssueText {
+                        text: EditorState.arp-message != "" ? EditorState.arp-message : @tr("The MAC address could not be looked up.");
+                    }
+                }
+                // v0.2: VPN / routed address without remote management (text from Rust).
+                if EditorState.arp-status == ArpStatus.needs-remote : WrapBox {
+                    InfoBar {
+                        severity: ToastKind.info;
+                        title: @tr("The MAC address can't be looked up with ARP");
+                        message: EditorState.arp-message;
+                        action-text: EditorState.remote-kind == RemoteKind.none ? @tr("Set up remote management") : "";
+                        closable: false;
+                        enabled: root.interactive;
+                        action => { root.reveal-remote(); }
+                    }
                 }
             }
 
@@ -367,6 +526,458 @@ export component HostEditorOverlay inherits ModalFrame {
                     text <=> EditorState.notes;
                     placeholder-text: @tr("Optional");
                     accepted => { root.save(); }
+                }
+            }
+
+            // ---- v0.2: remote management ------------------------------------------------------
+            remote-header := ExpanderHeader {
+                title: @tr("Remote management");
+                summary: EditorState.remote-kind == RemoteKind.none
+                    ? @tr("Restart, shut down and boot time over Windows remote management or SSH")
+                    : Texts.remote-kind(EditorState.remote-kind) + "  ·  "
+                        + (EditorState.remote-user != "" ? EditorState.remote-user + " @ " : "")
+                        + (EditorState.remote-address != "" ? EditorState.remote-address : EditorState.address);
+                enabled: root.interactive;
+                expanded <=> EditorState.remote-open;
+            }
+
+            if EditorState.remote-open : WrapBox {
+                spacing: 14px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    kind-field := Field {
+                        width: 190px;
+                        label: @tr("Type");
+                        ComboBox {
+                            accessible-label: kind-field.label;
+                            enabled: root.interactive;
+                            model: [@tr("None"), @tr("Windows"), @tr("Linux (SSH)")];
+                            current-index: EditorState.remote-kind == RemoteKind.windows ? 1 : EditorState.remote-kind == RemoteKind.ssh ? 2 : 0;
+                            selected => {
+                                EditorState.remote-kind = self.current-index == 1 ? RemoteKind.windows : self.current-index == 2 ? RemoteKind.ssh : RemoteKind.none;
+                                EditorState.remote-user-issue = EditorState.remote-kind == RemoteKind.none ? FieldIssue.none
+                                    : Validator.check-remote-user(EditorState.remote-user, EditorState.remote-kind);
+                                root.remote-edited();
+                            }
+                        }
+                    }
+                    if EditorState.remote-kind != RemoteKind.none : remote-address-field := Field {
+                        horizontal-stretch: 1;
+                        label: @tr("Management address");
+                        issue: EditorState.remote-address-issue;
+                        LineEdit {
+                            accessible-label: remote-address-field.label;
+                            enabled: root.interactive;
+                            text <=> EditorState.remote-address;
+                            input-type: InputType.text;
+                            // "" = the host's address.
+                            placeholder-text: EditorState.address != "" ? EditorState.address : @tr("Same as Address");
+                            edited(text) => {
+                                EditorState.remote-address-issue = Validator.check-address(text);
+                                root.remote-edited();
+                            }
+                            accepted => { root.save(); }
+                        }
+                    }
+                }
+
+                if EditorState.remote-kind == RemoteKind.none : WrapBox {
+                    NoteText {
+                        text: @tr("With remote management, WoL Manager can restart and shut down this host, show when it was started, and find its MAC address even over a VPN.");
+                    }
+                }
+                // Switching a managed host to "None" deletes its secrets on save: say so.
+                if EditorState.remote-kind == RemoteKind.none && root.has-remote-secrets : WrapBox {
+                    NoteText {
+                        icon: CoolIcons.warning;
+                        tint: Theme.warning-fg;
+                        text: @tr("When you save, the remote management settings of this host are removed, including its saved passwords and its trusted host key.");
+                    }
+                }
+
+                if EditorState.remote-kind != RemoteKind.none : HorizontalLayout {
+                    spacing: 12px;
+                    user-field := Field {
+                        horizontal-stretch: 1;
+                        label: @tr("User name");
+                        issue: EditorState.remote-user-issue;
+                        LineEdit {
+                            accessible-label: user-field.label;
+                            enabled: root.interactive;
+                            text <=> EditorState.remote-user;
+                            input-type: InputType.text;
+                            placeholder-text: EditorState.remote-kind == RemoteKind.ssh ? "root" : @tr("Current Windows user");
+                            edited(text) => {
+                                EditorState.remote-user-issue = Validator.check-remote-user(text, EditorState.remote-kind);
+                                root.remote-edited();
+                            }
+                            accepted => { root.save(); }
+                        }
+                    }
+                    SecretField {
+                        horizontal-stretch: 1;
+                        label: @tr("Password");
+                        enabled: root.interactive;
+                        text <=> EditorState.remote-password;
+                        saved: EditorState.remote-password-saved;
+                        delete <=> EditorState.remote-password-delete;
+                        empty-placeholder: EditorState.remote-kind == RemoteKind.ssh && EditorState.ssh-key-file != "" ? @tr("Not needed with a key file") : @tr("Not saved");
+                        delete-label: @tr("Delete saved password");
+                        undo-label: @tr("Keep the saved password");
+                        edited => { root.remote-edited(); }
+                        accepted => { root.save(); }
+                    }
+                }
+
+                if EditorState.remote-kind == RemoteKind.ssh : WrapBox {
+                    spacing: 14px;
+                    HorizontalLayout {
+                        spacing: 12px;
+                        ssh-port-field := Field {
+                            width: 150px;
+                            label: @tr("Port");
+                            issue: EditorState.ssh-port-issue;
+                            LineEdit {
+                                accessible-label: ssh-port-field.label;
+                                enabled: root.interactive;
+                                min-width: 90px;
+                                text <=> EditorState.ssh-port;
+                                input-type: InputType.text;
+                                placeholder-text: "22";
+                                edited(text) => {
+                                    EditorState.ssh-port-issue = Validator.check-port(text);
+                                    root.remote-edited();
+                                }
+                                accepted => { root.save(); }
+                            }
+                        }
+                        key-file-field := Field {
+                            horizontal-stretch: 1;
+                            label: @tr("Private key file");
+                            LineEdit {
+                                accessible-label: key-file-field.label;
+                                enabled: root.interactive;
+                                text <=> EditorState.ssh-key-file;
+                                input-type: InputType.text;
+                                placeholder-text: @tr("Optional, e.g. C:\\Users\\me\\.ssh\\id_ed25519");
+                                edited => { root.remote-edited(); }
+                                accepted => { root.save(); }
+                            }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 12px;
+                        SecretField {
+                            horizontal-stretch: 1;
+                            label: @tr("Key passphrase");
+                            enabled: root.interactive && (EditorState.ssh-key-file != "" || EditorState.ssh-key-passphrase-saved);
+                            text <=> EditorState.ssh-key-passphrase;
+                            saved: EditorState.ssh-key-passphrase-saved;
+                            delete <=> EditorState.ssh-key-passphrase-delete;
+                            empty-placeholder: EditorState.ssh-key-file != "" ? @tr("None") : @tr("Only with a key file");
+                            delete-label: @tr("Delete saved passphrase");
+                            undo-label: @tr("Keep the saved passphrase");
+                            edited => { root.remote-edited(); }
+                            accepted => { root.save(); }
+                        }
+                        sudo-field := Field {
+                            horizontal-stretch: 1;
+                            label: @tr("Administrator rights (sudo)");
+                            ComboBox {
+                                accessible-label: sudo-field.label;
+                                enabled: root.interactive;
+                                model: [
+                                    @tr("Automatic"),
+                                    @tr("Log in as root (no sudo)"),
+                                    @tr("sudo without a password (NOPASSWD)"),
+                                    @tr("sudo with the login password"),
+                                    @tr("sudo with a separate password"),
+                                ];
+                                current-index: EditorState.ssh-sudo == SudoMode.root ? 1
+                                    : EditorState.ssh-sudo == SudoMode.nopasswd ? 2
+                                    : EditorState.ssh-sudo == SudoMode.password ? 3
+                                    : EditorState.ssh-sudo == SudoMode.separate ? 4
+                                    : 0;
+                                selected => {
+                                    EditorState.ssh-sudo = self.current-index == 1 ? SudoMode.root
+                                        : self.current-index == 2 ? SudoMode.nopasswd
+                                        : self.current-index == 3 ? SudoMode.password
+                                        : self.current-index == 4 ? SudoMode.separate
+                                        : SudoMode.auto;
+                                    root.remote-edited();
+                                }
+                            }
+                        }
+                    }
+                    // The methods that never use it (root, NOPASSWD, login password) delete a saved
+                    // separate sudo password on save; "automatic" uses a saved one and keeps it.
+                    if EditorState.ssh-sudo != SudoMode.separate && EditorState.ssh-sudo != SudoMode.auto
+                        && EditorState.ssh-sudo-password-saved : WrapBox {
+                        NoteText {
+                            icon: CoolIcons.warning;
+                            tint: Theme.warning-fg;
+                            text: @tr("The saved sudo password is deleted when you save, because this sudo method doesn't use it.");
+                        }
+                    }
+                    if EditorState.ssh-sudo == SudoMode.separate : SecretField {
+                        label: @tr("sudo password");
+                        enabled: root.interactive;
+                        text <=> EditorState.ssh-sudo-password;
+                        saved: EditorState.ssh-sudo-password-saved;
+                        delete <=> EditorState.ssh-sudo-password-delete;
+                        empty-placeholder: @tr("Not saved");
+                        delete-label: @tr("Delete saved sudo password");
+                        undo-label: @tr("Keep the saved sudo password");
+                        edited => { root.remote-edited(); }
+                        accepted => { root.save(); }
+                    }
+
+                    // Pinned host key (trust on first use).
+                    host-key-field := Field {
+                        label: @tr("Host key");
+                        Rectangle {
+                            background: Theme.subtle-fill;
+                            border-radius: Theme.radius;
+                            border-width: 1px;
+                            border-color: Theme.card-border;
+                            accessible-role: groupbox;
+                            accessible-label: host-key-field.label;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 8px;
+                                padding-top: 8px;
+                                padding-bottom: 8px;
+                                spacing: 10px;
+                                Icon {
+                                    source: EditorState.host-key-fingerprint != "" && !EditorState.host-key-forget ? CoolIcons.shield : CoolIcons.lock;
+                                    size: 18px;
+                                    tint: EditorState.host-key-fingerprint != "" && !EditorState.host-key-forget ? Theme.success-fg : Theme.text-secondary;
+                                    cross-axis-self-alignment: center;
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    alignment: center;
+                                    spacing: 2px;
+                                    if EditorState.host-key-fingerprint != "" : Text {
+                                        text: EditorState.host-key-type;
+                                        color: EditorState.host-key-forget ? Theme.text-tertiary : Theme.text;
+                                        font-size: Theme.font-small;
+                                    }
+                                    if EditorState.host-key-fingerprint != "" : Text {
+                                        text: EditorState.host-key-fingerprint;
+                                        font-family: Theme.mono-font;
+                                        font-size: 12px;
+                                        color: EditorState.host-key-forget ? Theme.text-tertiary : Theme.text;
+                                        wrap: char-wrap;
+                                    }
+                                    if EditorState.host-key-fingerprint != "" && EditorState.host-key-forget : WrapBox {
+                                        Text {
+                                            text: @tr("This key will be forgotten when you save.");
+                                            font-size: Theme.font-small;
+                                            color: Theme.warning-fg;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                    if EditorState.host-key-fingerprint == "" : WrapBox {
+                                        Text {
+                                            text: @tr("Not trusted yet. On the first connection you check the fingerprint and decide whether to trust it.");
+                                            font-size: Theme.font-small;
+                                            color: Theme.text-secondary;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                }
+                                if EditorState.host-key-fingerprint != "" : Button {
+                                    text: EditorState.host-key-forget ? @tr("Undo") : @tr("Forget");
+                                    accessible-label: EditorState.host-key-forget ? @tr("Keep the trusted host key") : @tr("Forget the trusted host key");
+                                    enabled: root.interactive;
+                                    cross-axis-self-alignment: center;
+                                    clicked => {
+                                        EditorState.host-key-forget = !EditorState.host-key-forget;
+                                        root.remote-edited();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // The host's own restart / shutdown commands (they run as root instead of the
+                    // platform's, so they are always visible; read-only, set with wolm).
+                    // (WrapBox: conditional content with wrapped text, see widgets.slint.)
+                    if EditorState.reboot-command != "" || EditorState.shutdown-command != "" : WrapBox {
+                        power-commands-field := Field {
+                            label: @tr("Own restart / shutdown commands");
+                            Rectangle {
+                                background: EditorState.power-commands-reset ? Theme.subtle-fill : Theme.warning-bg;
+                                border-radius: Theme.radius;
+                                border-width: 1px;
+                                border-color: Theme.card-border;
+                                accessible-role: groupbox;
+                                accessible-label: power-commands-field.label;
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 8px;
+                                    padding-top: 8px;
+                                    padding-bottom: 8px;
+                                    spacing: 10px;
+                                    Icon {
+                                        source: CoolIcons.warning;
+                                        size: 18px;
+                                        tint: EditorState.power-commands-reset ? Theme.text-secondary : Theme.warning-fg;
+                                        cross-axis-self-alignment: start;
+                                    }
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        alignment: center;
+                                        spacing: 4px;
+                                        if EditorState.reboot-command != "" : DetailRow {
+                                            label: @tr("Restart");
+                                            value: EditorState.reboot-command;
+                                            mono: true;
+                                            label-width: 90px;
+                                            value-color: EditorState.power-commands-reset ? Theme.text-tertiary : Theme.text;
+                                        }
+                                        if EditorState.shutdown-command != "" : DetailRow {
+                                            label: @tr("Shut down");
+                                            value: EditorState.shutdown-command;
+                                            mono: true;
+                                            label-width: 90px;
+                                            value-color: EditorState.power-commands-reset ? Theme.text-tertiary : Theme.text;
+                                        }
+                                        WrapBox {
+                                            Text {
+                                                text: EditorState.power-commands-reset
+                                                    ? @tr("The platform's default commands are used again when you save.")
+                                                    : @tr("These run with root rights instead of the platform's commands. They can only be changed with wolm remote set.");
+                                                font-size: Theme.font-small;
+                                                color: EditorState.power-commands-reset ? Theme.warning-fg : Theme.text-secondary;
+                                                wrap: word-wrap;
+                                            }
+                                        }
+                                    }
+                                    Button {
+                                        text: EditorState.power-commands-reset ? @tr("Undo") : @tr("Use the defaults");
+                                        accessible-label: EditorState.power-commands-reset ? @tr("Keep the host's own commands") : @tr("Use the platform's default commands");
+                                        enabled: root.interactive;
+                                        cross-axis-self-alignment: center;
+                                        clicked => {
+                                            EditorState.power-commands-reset = !EditorState.power-commands-reset;
+                                            root.remote-edited();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if EditorState.remote-kind == RemoteKind.windows : WrapBox {
+                    NoteText {
+                        text: @tr("Use an administrator account of that PC. It must allow File and Printer Sharing (SMB) from this PC, also over a VPN. For local accounts, Windows may deny remote administration (UAC remote restrictions). See the README for the setup.");
+                    }
+                }
+                if EditorState.remote-kind == RemoteKind.ssh : WrapBox {
+                    NoteText {
+                        text: @tr("Log in as root or as a user who can use sudo. Restarting and shutting down need root rights.");
+                    }
+                }
+                if EditorState.remote-kind != RemoteKind.none : WrapBox {
+                    NoteText {
+                        icon: CoolIcons.lock;
+                        tint: Theme.text-secondary;
+                        text: @tr("Passwords are saved in Windows Credential Manager when you save the host, never in config.toml. Leave a saved password empty to keep it.");
+                    }
+                }
+
+                // Test connection + result.
+                if EditorState.remote-kind != RemoteKind.none : WrapBox {
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: start;
+                        Button {
+                            text: @tr("Test connection");
+                            icon: CoolIcons.link;
+                            colorize-icon: true;
+                            enabled: root.interactive && EditorState.test-status != TestStatus.busy
+                                && (EditorState.address != "" || EditorState.remote-address != "");
+                            clicked => { EditorState.test-connection(); }
+                        }
+                        if EditorState.test-status == TestStatus.busy : BusySpinner {
+                            width: 20px;
+                            height: 20px;
+                            cross-axis-self-alignment: center;
+                        }
+                        if EditorState.test-status == TestStatus.busy : Text {
+                            text: @tr("Connecting…");
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+                    if EditorState.test-status == TestStatus.ok : WrapBox {
+                        Rectangle {
+                            background: Theme.success-bg;
+                            border-radius: Theme.radius;
+                            border-width: 1px;
+                            border-color: Theme.card-border;
+                            accessible-role: groupbox;
+                            accessible-label: @tr("Connected");
+                            HorizontalLayout {
+                                padding: 10px;
+                                padding-left: 12px;
+                                spacing: 10px;
+                                Icon {
+                                    source: CoolIcons.ok;
+                                    size: 18px;
+                                    tint: Theme.success-fg;
+                                    cross-axis-self-alignment: start;
+                                }
+                                VerticalLayout {
+                                    horizontal-stretch: 1;
+                                    spacing: 2px;
+                                    Text {
+                                        text: EditorState.test-os != "" ? @tr("Connected: {0}", EditorState.test-os) : @tr("Connected");
+                                        font-weight: 600;
+                                        color: Theme.text;
+                                        wrap: word-wrap;
+                                    }
+                                    if EditorState.test-boot != "" : WrapBox {
+                                        Text {
+                                            text: EditorState.test-boot;
+                                            font-size: Theme.font-small;
+                                            color: Theme.text;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                    if EditorState.test-note != "" : WrapBox {
+                                        HorizontalLayout {
+                                            spacing: 6px;
+                                            padding-top: 2px;
+                                            Icon {
+                                                source: CoolIcons.warning;
+                                                size: 14px;
+                                                tint: Theme.warning-fg;
+                                                cross-axis-self-alignment: start;
+                                            }
+                                            Text {
+                                                text: EditorState.test-note;
+                                                font-size: Theme.font-small;
+                                                color: Theme.text;
+                                                wrap: word-wrap;
+                                                horizontal-stretch: 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if EditorState.test-status == TestStatus.failed : WrapBox {
+                        IssueText {
+                            text: EditorState.test-error != "" ? EditorState.test-error : @tr("The connection failed.");
+                        }
+                    }
                 }
             }
 

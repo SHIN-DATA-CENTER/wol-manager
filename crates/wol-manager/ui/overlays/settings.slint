@@ -9,9 +9,9 @@ import { Button, ComboBox, LineEdit, SpinBox, Switch, ScrollView } from "std-wid
 import { CoolIcons } from "@coolicons";
 import { OverlayKind, StorageMode, PortableBlock, PathMode, PathState, FieldIssue } from "../types.slint";
 import { Theme } from "../theme.slint";
-import { AppState, SettingsState, Validator, Texts, ModalGate } from "../state.slint";
+import { AppState, SettingsState, Validator, Texts, ModalGate, AboutInfo } from "../state.slint";
 import {
-    Icon, SettingRow, SectionHeader, HintText, IssueText, CodeChip, Divider, BusySpinner,
+    Icon, SettingRow, SectionHeader, HintText, IssueText, CodeChip, Divider, BusySpinner, LinkText,
 } from "../widgets.slint";
 import { ModalFrame, ModalFooter } from "modal.slint";
 
@@ -391,6 +391,199 @@ component WakePage inherits VerticalLayout {
     }
 }
 
+/// v0.2: defaults of remote management + where the passwords are kept.
+component RemotePage inherits VerticalLayout {
+    spacing: 8px;
+    alignment: start;
+    padding-left: 4px;
+    padding-right: 16px;
+    padding-bottom: 8px;
+
+    SectionHeader { title: @tr("Restart and shutdown"); }
+    delay-row := SettingRow {
+        icon: CoolIcons.clock;
+        title: @tr("Delay on Windows hosts");
+        description: @tr("Default countdown before a Windows host restarts or shuts down. 0 = immediately.");
+        SpinBox {
+            width: 110px;
+            accessible-label: delay-row.title;
+            accessible-description: delay-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 0;
+            maximum: 600;
+            step-size: 10;
+            value <=> SettingsState.remote-delay-secs;
+            edited => { SettingsState.changed("remote.shutdown_delay_secs"); }
+        }
+        Unit { text: @tr("seconds"); }
+    }
+    force-row := SettingRow {
+        title: @tr("Force apps to close on Windows hosts");
+        description: @tr("Apps with unsaved work are closed without asking. If this is off, such apps can stop the shutdown.");
+        Switch {
+            accessible-label: force-row.title;
+            accessible-description: force-row.description;
+            enabled: ModalGate.overlay-enabled;
+            checked <=> SettingsState.remote-force;
+            toggled => { SettingsState.changed("remote.force_apps_closed"); }
+        }
+    }
+    restart-row := SettingRow {
+        icon: CoolIcons.restart;
+        title: @tr("Wait for the host to restart");
+        description: @tr("After a restart, the host must answer again with a new boot time within this time.");
+        SpinBox {
+            width: 110px;
+            accessible-label: restart-row.title;
+            accessible-description: restart-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 30;
+            maximum: 3600;
+            step-size: 30;
+            value <=> SettingsState.remote-restart-timeout-secs;
+            edited => { SettingsState.changed("remote.restart_verify_timeout_secs"); }
+        }
+        Unit { text: @tr("seconds"); }
+    }
+    shutdown-row := SettingRow {
+        icon: CoolIcons.shutdown;
+        title: @tr("Wait for the host to shut down");
+        description: @tr("After a shutdown, the host must stop answering within this time.");
+        SpinBox {
+            width: 110px;
+            accessible-label: shutdown-row.title;
+            accessible-description: shutdown-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 30;
+            maximum: 3600;
+            step-size: 30;
+            value <=> SettingsState.remote-shutdown-timeout-secs;
+            edited => { SettingsState.changed("remote.shutdown_verify_timeout_secs"); }
+        }
+        Unit { text: @tr("seconds"); }
+    }
+
+    SectionHeader { title: @tr("Connection"); }
+    connect-row := SettingRow {
+        icon: CoolIcons.link;
+        title: @tr("Connection timeout");
+        description: @tr("How long to wait for a host to accept the connection.");
+        SpinBox {
+            width: 110px;
+            accessible-label: connect-row.title;
+            accessible-description: connect-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 1;
+            maximum: 60;
+            value <=> SettingsState.remote-connect-timeout-secs;
+            edited => { SettingsState.changed("remote.connect_timeout_ms"); }
+        }
+        Unit { text: @tr("seconds"); }
+    }
+    boot-row := SettingRow {
+        title: @tr("Get the boot time automatically");
+        description: @tr("When a host with remote management comes online, its boot time is shown in the list.");
+        Switch {
+            accessible-label: boot-row.title;
+            accessible-description: boot-row.description;
+            enabled: ModalGate.overlay-enabled;
+            checked <=> SettingsState.remote-auto-boot-time;
+            toggled => { SettingsState.changed("remote.auto_boot_time"); }
+        }
+    }
+
+    SectionHeader { title: @tr("Security and requirements"); }
+    Rectangle {
+        vertical-stretch: 0;
+        background: Theme.card;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        VerticalLayout {
+            padding: 14px;
+            spacing: 12px;
+            HorizontalLayout {
+                spacing: 14px;
+                Icon {
+                    source: CoolIcons.lock;
+                    size: 18px;
+                    cross-axis-self-alignment: start;
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: @tr("Passwords are kept in Windows Credential Manager");
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: @tr("They are stored for your Windows user on this PC only, never in config.toml, and are not included in portable data or exported files. On another PC, enter them again.");
+                        font-size: Theme.font-small;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 14px;
+                Icon {
+                    source: CoolIcons.os-windows;
+                    size: 18px;
+                    cross-axis-self-alignment: start;
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: @tr("Windows hosts");
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: @tr("An administrator account of the host, and File and Printer Sharing (SMB) allowed from this PC, also over a VPN. Looking up the MAC address also uses WMI.");
+                        font-size: Theme.font-small;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            HorizontalLayout {
+                spacing: 14px;
+                Icon {
+                    source: CoolIcons.os-ssh;
+                    size: 18px;
+                    cross-axis-self-alignment: start;
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 2px;
+                    Text {
+                        text: @tr("Linux, NAS and other SSH hosts");
+                        color: Theme.text;
+                        wrap: word-wrap;
+                    }
+                    Text {
+                        text: @tr("SSH login as root, or as a user who can use sudo (with or without a password).");
+                        font-size: Theme.font-small;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+            HorizontalLayout {
+                padding-left: 32px;
+                alignment: start;
+                LinkText {
+                    text: @tr("Setup guide (README)");
+                    url: AboutInfo.remote-help-url;
+                    enabled: ModalGate.overlay-enabled;
+                }
+            }
+        }
+    }
+}
+
 component StoragePage inherits VerticalLayout {
     spacing: 8px;
     alignment: start;
@@ -606,15 +799,17 @@ export component SettingsOverlay inherits ModalFrame {
     /// Switch to page `p` (clamped) and move the focus to its entry in the page list (the old
     /// page, and a focused control on it, is destroyed).
     function go-page(p: int) {
-        SettingsState.page = max(0, min(3, p));
+        SettingsState.page = max(0, min(4, p));
         if SettingsState.page == 0 {
             nav0.focus();
         } else if SettingsState.page == 1 {
             nav1.focus();
         } else if SettingsState.page == 2 {
-            nav2.focus();
+            nav-remote.focus();
+        } else if SettingsState.page == 3 {
+            nav-storage.focus();
         } else {
-            nav3.focus();
+            nav-advanced.focus();
         }
     }
 
@@ -625,7 +820,7 @@ export component SettingsOverlay inherits ModalFrame {
     unhandled-key(event) => {
         if event.modifiers.control && (event.text == Key.Tab || event.text == Key.Backtab) && root.interactive {
             let backward = event.modifiers.shift || event.text == Key.Backtab;
-            root.go-page(Math.mod(SettingsState.page + (backward ? 3 : 1), 4));
+            root.go-page(Math.mod(SettingsState.page + (backward ? 4 : 1), 5));
             return accept;
         }
         return reject;
@@ -658,21 +853,29 @@ export component SettingsOverlay inherits ModalFrame {
                 clicked => { root.go-page(1); }
                 move(d) => { root.go-page(1 + d); }
             }
-            nav2 := NavItem {
-                icon: CoolIcons.folder;
-                text: @tr("Storage & command line");
+            nav-remote := NavItem {
+                icon: CoolIcons.remote;
+                text: @tr("Remote management");
                 selected: SettingsState.page == 2;
                 enabled: root.interactive;
                 clicked => { root.go-page(2); }
                 move(d) => { root.go-page(2 + d); }
             }
-            nav3 := NavItem {
-                icon: CoolIcons.more;
-                text: @tr("Advanced");
+            nav-storage := NavItem {
+                icon: CoolIcons.folder;
+                text: @tr("Storage & command line");
                 selected: SettingsState.page == 3;
                 enabled: root.interactive;
                 clicked => { root.go-page(3); }
                 move(d) => { root.go-page(3 + d); }
+            }
+            nav-advanced := NavItem {
+                icon: CoolIcons.more;
+                text: @tr("Advanced");
+                selected: SettingsState.page == 4;
+                enabled: root.interactive;
+                clicked => { root.go-page(4); }
+                move(d) => { root.go-page(4 + d); }
             }
         }
 
@@ -689,12 +892,16 @@ export component SettingsOverlay inherits ModalFrame {
             page1 := WakePage { }
         }
         if SettingsState.page == 2 : PageScroll {
-            content-height: max(self.visible-height, page2.preferred-height);
-            page2 := StoragePage { }
+            content-height: max(self.visible-height, page-remote.preferred-height);
+            page-remote := RemotePage { }
         }
         if SettingsState.page == 3 : PageScroll {
-            content-height: max(self.visible-height, page3.preferred-height);
-            page3 := AdvancedPage { }
+            content-height: max(self.visible-height, page-storage.preferred-height);
+            page-storage := StoragePage { }
+        }
+        if SettingsState.page == 4 : PageScroll {
+            content-height: max(self.visible-height, page-advanced.preferred-height);
+            page-advanced := AdvancedPage { }
         }
     }
 }

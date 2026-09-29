@@ -1,0 +1,176 @@
+// v0.2: SSH host key dialog (top layer). Two variants from AppState.hostkey:
+// - unknown key (first connection): details + how to check the fingerprint; Trust / Cancel.
+// - mismatch (hard error): trusted vs received fingerprint; Close, and "Forget trusted key…"
+//   which asks Rust to show ConfirmKind.forget-host-key. There is no way to trust a changed key
+//   directly.
+// Cancel / Close have the initial focus.
+
+import { Button, ScrollView } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { HostKeyPrompt, ToastKind } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { AppState } from "../state.slint";
+import { CodeChip, DetailRow, HintText, InfoBar, WrapBox } from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+export component HostKeyOverlay inherits ModalFrame {
+    property <HostKeyPrompt> p: AppState.hostkey;
+    /// Public key file that `ssh-keygen -lf` should read on the host for this key type.
+    property <string> key-file: root.p.key-type == "ssh-ed25519" ? "ssh_host_ed25519_key.pub"
+        : root.p.key-type == "ssh-rsa" || root.p.key-type == "rsa-sha2-256" || root.p.key-type == "rsa-sha2-512" ? "ssh_host_rsa_key.pub"
+        : "ssh_host_ecdsa_key.pub";
+    /// "address:port"; an IPv6 literal (contains ':') is bracketed: "[fd7a::1]:22".
+    property <bool> ipv6: root.p.address.replace-all(":", "") != root.p.address;
+    property <string> where: root.p.port <= 0 ? root.p.address
+        : root.ipv6 ? "[" + root.p.address + "]:" + root.p.port
+        : root.p.address + ":" + root.p.port;
+
+    title: root.p.mismatch ? @tr("The host key has changed") : @tr("Trust this host key?");
+    title-icon: root.p.mismatch ? CoolIcons.shield-warning : CoolIcons.shield;
+    card-width: 560px;
+    show-close-button: false;
+    top-layer: true;
+
+    function trust() {
+        let p = AppState.hostkey;
+        AppState.hostkey-open = false;
+        AppState.hostkey-trusted(p);
+    }
+
+    function cancel() {
+        let p = AppState.hostkey;
+        AppState.hostkey-open = false;
+        AppState.hostkey-cancelled(p);
+    }
+
+    function forget() {
+        let p = AppState.hostkey;
+        AppState.hostkey-open = false;
+        AppState.hostkey-forget(p);
+    }
+
+    close-requested => { root.cancel(); }
+    init => { cancel-button.focus(); }
+
+    ScrollView {
+        vertical-stretch: 1;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        // The fluent ScrollView does not forward its content size; the card sizes to it.
+        preferred-height: content.preferred-height;
+
+        content := VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 4px;
+            padding-bottom: 20px;
+            spacing: 14px;
+            alignment: start;
+
+            if !root.p.mismatch : WrapBox {
+                Text {
+                    text: @tr("WoL Manager is connecting to “{0}” over SSH for the first time. Make sure that the fingerprint below belongs to this host before you trust it.", root.p.host-name);
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+            }
+            if root.p.mismatch : WrapBox {
+                InfoBar {
+                    severity: ToastKind.error;
+                    title: @tr("The connection was stopped.");
+                    message: @tr("“{0}” sent a different key than the trusted one. The host may have been reinstalled, or someone may be intercepting the connection.", root.p.host-name);
+                    closable: false;
+                }
+            }
+
+            Rectangle {
+                background: Theme.subtle-fill;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+                    DetailRow {
+                        label: @tr("Host");
+                        value: root.p.host-name;
+                    }
+                    DetailRow {
+                        label: @tr("Address");
+                        value: root.where;
+                        mono: true;
+                    }
+                    DetailRow {
+                        label: @tr("Key type");
+                        value: root.p.key-type;
+                        mono: true;
+                    }
+                    if !root.p.mismatch : WrapBox {
+                        DetailRow {
+                            label: @tr("Fingerprint");
+                            value: root.p.fingerprint;
+                            mono: true;
+                        }
+                    }
+                    if root.p.mismatch : WrapBox {
+                        spacing: 8px;
+                        DetailRow {
+                            label: @tr("Trusted key");
+                            value: root.p.expected-fingerprint;
+                            mono: true;
+                        }
+                        DetailRow {
+                            label: @tr("Received key");
+                            value: root.p.fingerprint;
+                            mono: true;
+                            value-color: Theme.error-text;
+                        }
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 6px;
+                Text {
+                    text: root.p.mismatch
+                        ? @tr("To see the host's current key, run this command on the host:")
+                        : @tr("To check it, run this command on the host and compare the SHA256 value:");
+                    color: Theme.text;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    CodeChip {
+                        text: "ssh-keygen -lf /etc/ssh/" + root.key-file;
+                        font-size: 12px;
+                    }
+                }
+            }
+            if root.p.mismatch : WrapBox {
+                HintText {
+                    text: @tr("If you know why the key changed, forget the trusted key. You will be asked to check the new key on the next connection.");
+                }
+            }
+        }
+    }
+
+    ModalFooter {
+        if root.p.mismatch : Button {
+            text: @tr("Forget trusted key…");
+            clicked => { root.forget(); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if !root.p.mismatch : Button {
+            text: @tr("Trust");
+            primary: true;
+            min-width: 96px;
+            clicked => { root.trust(); }
+        }
+        cancel-button := Button {
+            text: root.p.mismatch ? @tr("Close") : @tr("Cancel");
+            primary: root.p.mismatch;
+            min-width: 96px;
+            clicked => { root.cancel(); }
+        }
+    }
+}

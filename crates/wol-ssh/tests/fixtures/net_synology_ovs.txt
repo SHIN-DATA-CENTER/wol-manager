@@ -1,0 +1,13 @@
+WOLM1 hdr os=Linux uid=1026
+WOLM1 route ovs_eth0 0
+WOLM1 if docker0 mac=02:42:5a:00:00:01 type=1 kind=bridge aat=3 oper=down carrier=0 lower=- perm=- wol=-
+WOLM1 if eth0 mac=00:11:32:aa:bb:01 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=- wol=-
+WOLM1 if eth1 mac=00:11:32:aa:bb:02 type=1 kind=phys aat=0 oper=down carrier= lower=- perm=- wol=-
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if ovs-system mac=6a:3e:5b:00:00:01 type=1 kind=virtual aat=1 oper=down carrier= lower=eth0,eth1 perm=- wol=-
+WOLM1 if ovs_eth0 mac=00:11:32:aa:bb:01 type=1 kind=virtual aat=3 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if ovs_eth1 mac=00:11:32:aa:bb:02 type=1 kind=virtual aat=3 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet ovs_eth0 192.168.1.30/24
+WOLM1 inet docker0 172.17.0.1/16
+WOLM1 end

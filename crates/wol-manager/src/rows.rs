@@ -13,7 +13,7 @@ use slint::{FilterModel, Model, ModelRc, SharedString, VecModel};
 use wol_core::normalize;
 use wol_core::{Config, Host};
 
-use crate::{HostRow, HostStatus, ProbeVia, TrayHost};
+use crate::{HostRow, HostStatus, ProbeVia, RemoteKind, TrayHost};
 
 /// Status part of a row (owned by the scheduler).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,13 +36,35 @@ impl Default for RowState {
     }
 }
 
+/// Remote-management part of a row (owned by `crate::remote::RemoteState`, contract §10.2).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RemoteRow {
+    /// Localized boot line, "" = unknown / hidden.
+    pub boot_text: String,
+    /// The boot time is approximate (the UI adds its own marker).
+    pub boot_approx: bool,
+    /// A user-started remote operation runs on a worker.
+    pub busy: bool,
+}
+
+/// `HostRow.remote-kind` of a host.
+pub fn remote_kind(h: &Host) -> RemoteKind {
+    match h.remote_kind() {
+        None => RemoteKind::None,
+        Some(wol_core::RemoteKind::Windows) => RemoteKind::Windows,
+        Some(wol_core::RemoteKind::Ssh) => RemoteKind::Ssh,
+    }
+}
+
 /// First line of a multi-line text (the row shows a single elided line).
 pub fn first_line(s: &str) -> &str {
     s.lines().next().unwrap_or("").trim_end()
 }
 
 /// The row for a host.
-pub fn host_row(h: &Host, st: RowState) -> HostRow {
+pub fn host_row(h: &Host, st: RowState, rx: &RemoteRow) -> HostRow {
+    let kind = remote_kind(h);
+    let managed = kind != RemoteKind::None;
     HostRow {
         id: h.id.to_string().into(),
         name: h.name.as_str().into(),
@@ -58,7 +80,36 @@ pub fn host_row(h: &Host, st: RowState) -> HostRow {
         status: st.status,
         via: st.via,
         rtt_ms: st.rtt_ms,
+        managed,
+        remote_kind: kind,
+        // Only managed hosts show remote data (a removed table hides stale values at once).
+        boot_text: if managed {
+            rx.boot_text.as_str().into()
+        } else {
+            SharedString::default()
+        },
+        boot_approx: managed && rx.boot_approx && !rx.boot_text.is_empty(),
+        busy_remote: managed && rx.busy,
     }
+}
+
+fn apply_remote(r: &mut HostRow, rx: &RemoteRow) -> bool {
+    let (text, approx, busy) = if r.managed {
+        (
+            SharedString::from(rx.boot_text.as_str()),
+            rx.boot_approx && !rx.boot_text.is_empty(),
+            rx.busy,
+        )
+    } else {
+        (SharedString::default(), false, false)
+    };
+    if r.boot_text == text && r.boot_approx == approx && r.busy_remote == busy {
+        return false;
+    }
+    r.boot_text = text;
+    r.boot_approx = approx;
+    r.busy_remote = busy;
+    true
 }
 
 /// "Natural" order of names: width-folded, case-insensitive, digit runs compared by value
@@ -227,8 +278,14 @@ impl HostList {
     }
 
     /// Replaces the rows with `cfg`'s hosts (display order), keeping rows whose content did
-    /// not change. `state` supplies the status part (kept by the scheduler across reloads).
-    pub fn reconcile(&self, cfg: &Config, state: impl Fn(&Host) -> RowState) {
+    /// not change. `state` supplies the status part (kept by the scheduler across reloads),
+    /// `remote` the remote-management part (boot text, busy).
+    pub fn reconcile(
+        &self,
+        cfg: &Config,
+        state: impl Fn(&Host) -> RowState,
+        remote: impl Fn(&Host) -> RemoteRow,
+    ) {
         let hosts = sorted_hosts(cfg);
         {
             let mut f = self.filter.borrow_mut();
@@ -237,7 +294,10 @@ impl HostList {
                 .map(|h| (SharedString::from(h.id.to_string()), (*h).clone()))
                 .collect();
         }
-        let rows: Vec<HostRow> = hosts.iter().map(|h| host_row(h, state(h))).collect();
+        let rows: Vec<HostRow> = hosts
+            .iter()
+            .map(|h| host_row(h, state(h), &remote(h)))
+            .collect();
         let same_order = self.source.row_count() == rows.len()
             && self
                 .source
@@ -282,6 +342,25 @@ impl HostList {
             self.source.set_row_data(i, r);
         }
         true
+    }
+
+    /// Updates the remote-management part of one row (boot text, busy). Returns `false` if
+    /// the row does not exist.
+    pub fn set_remote(&self, id: &str, rx: &RemoteRow) -> bool {
+        let Some(i) = self.source.iter().position(|r| r.id == id) else {
+            return false;
+        };
+        if let Some(mut r) = self.source.row_data(i)
+            && apply_remote(&mut r, rx)
+        {
+            self.source.set_row_data(i, r);
+        }
+        true
+    }
+
+    /// Ids of all rows (visible or not).
+    pub fn all_ids(&self) -> Vec<SharedString> {
+        self.source.iter().map(|r| r.id).collect()
     }
 
     /// Removes one row.
@@ -332,7 +411,7 @@ mod tests {
         h.address = Some(HostAddr::parse("192.168.1.10").unwrap());
         h.group = Some("Home".into());
         h.notes = Some("書斎の NAS\r\nsecond line".into());
-        let r = host_row(&h, RowState::default());
+        let r = host_row(&h, RowState::default(), &RemoteRow::default());
         assert_eq!(r.id, h.id.to_string());
         assert_eq!(r.mac, "00:11:22:33:44:55");
         assert_eq!(r.address, "192.168.1.10");
@@ -341,10 +420,64 @@ mod tests {
         assert_eq!(r.status, HostStatus::Unknown);
         assert_eq!(r.rtt_ms, -1);
 
-        let bare = host_row(&host("x", "00:11:22:33:44:56"), RowState::default());
+        let bare = host_row(
+            &host("x", "00:11:22:33:44:56"),
+            RowState::default(),
+            &RemoteRow::default(),
+        );
         assert_eq!(bare.address, "");
         assert_eq!(bare.group, "");
         assert_eq!(bare.notes, "");
+    }
+
+    #[test]
+    fn remote_fields_of_rows() {
+        let mut h = host("PC", "00:11:22:33:44:55");
+        let rx = RemoteRow {
+            boot_text: "起動 9/29 08:12（稼働 3時間12分）".into(),
+            boot_approx: true,
+            busy: true,
+        };
+        // Unmanaged: no badge, and stale remote data is never shown.
+        let r = host_row(&h, RowState::default(), &rx);
+        assert!(!r.managed);
+        assert_eq!(r.remote_kind, RemoteKind::None);
+        assert_eq!(r.boot_text, "");
+        assert!(!r.boot_approx && !r.busy_remote);
+
+        h.remote = Some(wol_core::RemoteConfig::new(wol_core::RemoteKind::Windows));
+        let r = host_row(&h, RowState::default(), &rx);
+        assert!(r.managed);
+        assert_eq!(r.remote_kind, RemoteKind::Windows);
+        assert_eq!(r.boot_text, rx.boot_text.as_str());
+        assert!(r.boot_approx && r.busy_remote);
+
+        h.remote = Some(wol_core::RemoteConfig::new(wol_core::RemoteKind::Ssh));
+        let r = host_row(&h, RowState::default(), &RemoteRow::default());
+        assert_eq!(r.remote_kind, RemoteKind::Ssh);
+        assert_eq!(r.boot_text, "");
+        assert!(!r.boot_approx, "approx without a text is hidden");
+
+        // set_remote updates only the remote part, by id.
+        let id = h.id.to_string();
+        let list = HostList::new();
+        list.reconcile(
+            &cfg_with(vec![h.clone()]),
+            |_| RowState {
+                status: HostStatus::Online,
+                ..RowState::default()
+            },
+            |_| RemoteRow::default(),
+        );
+        assert!(list.set_remote(&id, &rx));
+        let r = list.row(&id).unwrap();
+        assert_eq!(r.boot_text, rx.boot_text.as_str());
+        assert!(r.busy_remote);
+        assert_eq!(r.status, HostStatus::Online);
+        assert!(list.set_remote(&id, &RemoteRow::default()));
+        assert_eq!(list.row(&id).unwrap().boot_text, "");
+        assert!(!list.set_remote("nope", &rx));
+        assert_eq!(list.all_ids(), vec![SharedString::from(id)]);
     }
 
     #[test]
@@ -373,7 +506,7 @@ mod tests {
                 RowState::default()
             }
         };
-        list.reconcile(&cfg, state);
+        list.reconcile(&cfg, state, |_| RemoteRow::default());
         assert_eq!(names(&list), vec!["A-host", "B-host"]);
         assert_eq!(
             list.row(&ida.to_string()).unwrap().status,
@@ -382,7 +515,7 @@ mod tests {
 
         // Rename B-host (same order) keeps the status supplied by the scheduler.
         cfg.get_mut(ida).unwrap().notes = Some("n".into());
-        list.reconcile(&cfg, state);
+        list.reconcile(&cfg, state, |_| RemoteRow::default());
         let r = list.row(&ida.to_string()).unwrap();
         assert_eq!(r.status, HostStatus::Online);
         assert_eq!(r.rtt_ms, 3);
@@ -390,7 +523,7 @@ mod tests {
 
         // Reorder by renaming: rows are rebuilt, status still comes from `state`.
         cfg.get_mut(ida).unwrap().name = "0-first".into();
-        list.reconcile(&cfg, state);
+        list.reconcile(&cfg, state, |_| RemoteRow::default());
         assert_eq!(names(&list), vec!["0-first", "A-host"]);
         assert_eq!(
             list.row(&ida.to_string()).unwrap().status,
@@ -399,7 +532,7 @@ mod tests {
 
         // Removal.
         cfg.remove_host(idb).unwrap();
-        list.reconcile(&cfg, state);
+        list.reconcile(&cfg, state, |_| RemoteRow::default());
         assert_eq!(names(&list), vec!["0-first"]);
         assert!(list.row(&idb.to_string()).is_none());
 
@@ -428,7 +561,7 @@ mod tests {
         b.group = Some("Lab".into());
         let cfg = cfg_with(vec![a, b]);
         let list = HostList::new();
-        list.reconcile(&cfg, |_| RowState::default());
+        list.reconcile(&cfg, |_| RowState::default(), |_| RemoteRow::default());
         assert_eq!(list.visible_count(), 2);
 
         list.set_query("ｏｆｆｉｃｅ");
@@ -463,7 +596,7 @@ mod tests {
         let d = host("Loose", "00:11:22:33:44:04");
         let cfg = cfg_with(vec![a, b, c, d]);
         let list = HostList::new();
-        list.reconcile(&cfg, |_| RowState::default());
+        list.reconcile(&cfg, |_| RowState::default(), |_| RemoteRow::default());
         list.set_group("Lab");
         assert_eq!(names(&list), vec!["PC1", "PC2"]);
         list.set_query("pc2");
@@ -482,11 +615,11 @@ mod tests {
         let id = a.id;
         let mut cfg = cfg_with(vec![a]);
         let list = HostList::new();
-        list.reconcile(&cfg, |_| RowState::default());
+        list.reconcile(&cfg, |_| RowState::default(), |_| RemoteRow::default());
         list.set_query("two");
         assert_eq!(list.visible_count(), 1);
         cfg.get_mut(id).unwrap().notes = Some("one\nthree".into());
-        list.reconcile(&cfg, |_| RowState::default());
+        list.reconcile(&cfg, |_| RowState::default(), |_| RemoteRow::default());
         assert_eq!(list.visible_count(), 0);
     }
 
@@ -498,7 +631,7 @@ mod tests {
         let (idb, idc) = (b.id.to_string(), c.id.to_string());
         let cfg = cfg_with(vec![a, b, c]);
         let list = HostList::new();
-        list.reconcile(&cfg, |_| RowState::default());
+        list.reconcile(&cfg, |_| RowState::default(), |_| RemoteRow::default());
         let (row, id) = sync_selection(&list.visible_ids(), &idc);
         assert_eq!((row, id.as_str()), (2, idc.as_str()));
 

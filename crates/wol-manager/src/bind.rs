@@ -85,6 +85,37 @@ pub fn wire(app: &App) {
     s.on_dismiss_notice(|kind| {
         with(|a| a.dismiss_notice(kind));
     });
+    // v0.2.0 remote management (contract §10.10).
+    s.on_restart_host(|id| {
+        with(|a| a.restart_host(&id));
+    });
+    s.on_shutdown_host(|id| {
+        with(|a| a.shutdown_host(&id));
+    });
+    s.on_abort_shutdown(|id| {
+        with(|a| a.abort_shutdown(&id));
+    });
+    s.on_fetch_boot_time(|id| {
+        with(|a| a.fetch_boot_time(&id));
+    });
+    s.on_setup_remote(|id| {
+        with(|a| a.setup_remote(&id));
+    });
+    s.on_power_accepted(|req| {
+        with(|a| a.power_accepted(req));
+    });
+    s.on_power_cancelled(|req| {
+        with(|a| a.power_cancelled(req));
+    });
+    s.on_hostkey_trusted(|p| {
+        with(|a| a.hostkey_trusted(p));
+    });
+    s.on_hostkey_cancelled(|p| {
+        with(|a| a.hostkey_cancelled(p));
+    });
+    s.on_hostkey_forget(|p| {
+        with(|a| a.hostkey_forget(p));
+    });
 
     let e = ui.global::<EditorState>();
     e.on_save(|| {
@@ -92,6 +123,12 @@ pub fn wire(app: &App) {
     });
     e.on_lookup_mac(|address| {
         with(|a| a.lookup_mac(&address));
+    });
+    e.on_test_connection(|| {
+        with(|a| a.test_connection());
+    });
+    e.on_mac_picked(|c| {
+        with(|a| a.mac_picked(c));
     });
 
     // Pure callbacks: cheap, no side effects. The config is only borrowed immutably and a
@@ -112,6 +149,7 @@ pub fn wire(app: &App) {
     v.on_check_secureon(|t| crate::editor::check_secureon(&t));
     v.on_check_tcp_ports(|t| crate::editor::check_tcp_ports(&t));
     v.on_is_ipv4(|t| crate::editor::is_ipv4(&t));
+    v.on_check_remote_user(|t, kind| crate::editor::check_remote_user(&t, kind));
 
     let st = ui.global::<SettingsState>();
     st.on_changed(|key| {

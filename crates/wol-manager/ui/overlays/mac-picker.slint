@@ -1,0 +1,269 @@
+// v0.2: MAC address picker (top layer above the host editor). "Get from IP" found several
+// adapters on a remote host: EditorState.mac-candidates (best first). Select writes the MAC into
+// the editor and calls EditorState.mac-picked; Cancel / Esc just closes.
+//
+// Keyboard: the list is one Tab stop; Up / Down / Home / End move the selection, Enter selects.
+
+import { Button, ScrollView } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { MacCandidateRow, MacKind } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { EditorState, Validator, Texts } from "../state.slint";
+import { Pill } from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+global MacPickerMetrics {
+    out property <length> item-height: 56px;
+    out property <length> spacing: 6px;
+    out property <length> list-padding: 3px;
+}
+
+component CandidateItem inherits Rectangle {
+    in property <MacCandidateRow> c;
+    in property <bool> selected;
+    in property <bool> focused;
+    in property <bool> recommended;
+    callback clicked();
+    callback activated();
+
+    // Fixed height: MacPickerOverlay.move-to scrolls by item-height + spacing.
+    height: MacPickerMetrics.item-height;
+    border-radius: 6px;
+    background: root.selected ? (ta.has-hover ? Theme.selected-hover : Theme.selected) : ta.has-hover ? Theme.hover : transparent;
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.card-border;
+    accessible-role: list-item;
+    accessible-label: root.c.iface + ", " + root.c.mac + ", " + Texts.mac-kind(root.c.kind)
+        + (root.c.default-route ? ", " + @tr("Default route") : "")
+        + (root.recommended ? ", " + @tr("Recommended") : "")
+        + (root.c.link-up ? "" : ", " + @tr("Disconnected"));
+    accessible-description: root.c.detail;
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.clicked(); }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        double-clicked => { root.activated(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 12px;
+
+        // Radio mark.
+        Rectangle {
+            width: 18px;
+            Rectangle {
+                x: 0;
+                y: (parent.height - self.height) / 2;
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                border-width: root.selected ? 5px : 1.5px;
+                border-color: root.selected ? Theme.accent : Theme.text-secondary;
+                background: Theme.card;
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+                Text {
+                    text: root.c.iface;
+                    font-weight: 600;
+                    color: Theme.text;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+                Pill {
+                    text: Texts.mac-kind(root.c.kind);
+                    fg: Theme.text-secondary;
+                    bg: Theme.subtle-fill;
+                    cross-axis-self-alignment: center;
+                }
+                if root.c.default-route : Pill {
+                    text: @tr("Default route");
+                    cross-axis-self-alignment: center;
+                }
+                if root.recommended : Pill {
+                    text: @tr("Recommended");
+                    fg: Theme.success-fg;
+                    bg: Theme.success-bg;
+                    cross-axis-self-alignment: center;
+                }
+                if !root.c.link-up : Pill {
+                    text: @tr("Disconnected");
+                    fg: Theme.warning-fg;
+                    bg: Theme.warning-bg;
+                    cross-axis-self-alignment: center;
+                }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: start;
+                Text {
+                    text: root.c.mac;
+                    font-family: Theme.mono-font;
+                    font-size: 13px;
+                    color: Theme.text;
+                }
+                if root.c.detail != "" : Text {
+                    text: root.c.detail;
+                    font-size: Theme.font-small;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+
+    if root.focused : Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+export component MacPickerOverlay inherits ModalFrame {
+    /// Position in EditorState.mac-candidates (the best one first).
+    property <int> current: 0;
+    property <int> count: EditorState.mac-candidates.length;
+    /// Scores are sorted best first; "recommended" = the top score when it is not shared by all.
+    property <int> top-score: EditorState.mac-candidates[0].score;
+    property <bool> scores-differ: root.count > 1 && EditorState.mac-candidates[root.count - 1].score < root.top-score;
+
+    title: @tr("Choose a network adapter");
+    title-icon: CoolIcons.search;
+    card-width: 580px;
+    show-close-button: false;
+    top-layer: true;
+
+    function choose() {
+        if root.current < 0 || root.current >= root.count {
+            return;
+        }
+        EditorState.mac = EditorState.mac-candidates[root.current].mac;
+        EditorState.mac-issue = Validator.check-mac(EditorState.mac);
+        EditorState.mac-picker-open = false;
+        EditorState.mac-picked(EditorState.mac-candidates[root.current]);
+    }
+
+    function cancel() {
+        EditorState.mac-picker-open = false;
+    }
+
+    function move-to(i: int) {
+        root.current = max(0, min(root.count - 1, i));
+        // Keep the selected item visible (fixed item height + spacing, list padding).
+        let top = list-keys.y + MacPickerMetrics.list-padding
+            + root.current * (MacPickerMetrics.item-height + MacPickerMetrics.spacing);
+        if top + sv.content-y < 0 {
+            sv.content-y = -top;
+        }
+        if top + MacPickerMetrics.item-height + sv.content-y > sv.visible-height {
+            sv.content-y = sv.visible-height - top - MacPickerMetrics.item-height;
+        }
+    }
+
+    close-requested => { root.cancel(); }
+    init => { list-keys.focus(); }
+
+    // The explanation and the list scroll together (a separate list ScrollView squashed the
+    // wrapped explanation at 600x380).
+    sv := ScrollView {
+        vertical-stretch: 1;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        // The fluent ScrollView does not forward its content size; the card sizes to it.
+        preferred-height: content.preferred-height;
+
+        content := VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 4px;
+            padding-bottom: 16px;
+            spacing: 12px;
+            alignment: start;
+
+            Text {
+                text: @tr("“{0}” has several network adapters. Choose the one that should receive the magic packet, usually the wired adapter in the LAN.", EditorState.mac-picker-host);
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+
+            list-keys := FocusScope {
+                accessible-role: list;
+                accessible-label: @tr("Network adapters");
+                key-pressed(event) => {
+                    if event.text == Key.UpArrow {
+                        root.move-to(root.current - 1);
+                        return accept;
+                    }
+                    if event.text == Key.DownArrow {
+                        root.move-to(root.current + 1);
+                        return accept;
+                    }
+                    if event.text == Key.Home || event.text == Key.PageUp {
+                        root.move-to(0);
+                        return accept;
+                    }
+                    if event.text == Key.End || event.text == Key.PageDown {
+                        root.move-to(root.count - 1);
+                        return accept;
+                    }
+                    if event.text == Key.Return || event.text == Key.Space {
+                        root.choose();
+                        return accept;
+                    }
+                    return reject;
+                }
+
+                VerticalLayout {
+                    spacing: MacPickerMetrics.spacing;
+                    padding: MacPickerMetrics.list-padding;
+                    for cand[i] in EditorState.mac-candidates : CandidateItem {
+                        c: cand;
+                        selected: i == root.current;
+                        focused: list-keys.has-focus && i == root.current;
+                        recommended: root.scores-differ && cand.score == root.top-score;
+                        clicked => {
+                            root.current = i;
+                            list-keys.focus();
+                        }
+                        activated => {
+                            root.current = i;
+                            root.choose();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ModalFooter {
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: @tr("Select");
+            primary: true;
+            min-width: 96px;
+            enabled: root.count > 0;
+            clicked => { root.choose(); }
+        }
+        Button {
+            text: @tr("Cancel");
+            min-width: 96px;
+            clicked => { root.cancel(); }
+        }
+    }
+}

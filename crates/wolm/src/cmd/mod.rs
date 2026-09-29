@@ -2,14 +2,21 @@
 
 mod completions;
 mod config;
+mod cred;
 mod gui;
 mod hosts;
+mod mac;
 mod net;
 mod path;
 mod portable;
+mod power;
+mod remote;
+mod ssh;
 mod status;
 mod transfer;
 mod wake;
+
+use wol_core::remote::PowerAction;
 
 use crate::cli::Command;
 use crate::ctx::Ctx;
@@ -35,5 +42,13 @@ pub fn dispatch(ctx: &mut Ctx, command: Command) -> CmdResult {
         Command::Path(c) => path::run(ctx, &c),
         Command::Completions(a) => completions::run(ctx, &a),
         Command::Gui => gui::run(ctx),
+        Command::Restart(a) => power::run(ctx, &a, PowerAction::Restart),
+        Command::Shutdown(a) => power::run(ctx, &a, PowerAction::Shutdown),
+        Command::Abort(a) => power::abort(ctx, &a),
+        Command::BootTime(a) => remote::boot_time(ctx, &a),
+        Command::Mac(a) => mac::run(ctx, &a),
+        Command::Remote(c) => remote::run(ctx, &c),
+        Command::Cred(c) => cred::run(ctx, &c),
+        Command::Ssh(c) => ssh::run(ctx, &c),
     }
 }

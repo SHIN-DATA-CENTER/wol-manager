@@ -2,9 +2,9 @@
 
 import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
 import { CoolIcons, AppArt } from "@coolicons";
-import { HostRow, HostStatus, Notice, NoticeKind, ToastKind, OverlayKind, StorageMode } from "types.slint";
+import { HostRow, HostStatus, Notice, NoticeKind, ToastKind, OverlayKind, StorageMode, RemoteKind } from "types.slint";
 import { Theme } from "theme.slint";
-import { AppState, Texts } from "state.slint";
+import { AppState, Texts, RemoteRules } from "state.slint";
 import {
     Icon, IconButton, Divider, CodeChip, InfoBar, DropdownButton, PopupFrame, PopupItem,
     PopupListKeys, BusySpinner, TipBubble,
@@ -278,9 +278,11 @@ export component MainView inherits Rectangle {
 
     property <bool> show-mac: root.width >= Columns.mac-min-width;
     property <bool> pulse;
-    /// Host targeted by the open row menu.
+    /// Host targeted by the open row menu (id, and its row while that still holds the id).
     property <string> menu-id;
-    property <string> menu-address;
+    property <int> menu-index: -1;
+    property <HostRow> menu-host: AppState.hosts[root.menu-index];
+    property <bool> menu-host-ok: root.menu-index >= 0 && root.menu-host.id == root.menu-id;
 
     public function focus-search() {
         search.focus();
@@ -321,7 +323,7 @@ export component MainView inherits Rectangle {
 
     function open-menu(index: int, id: string, position: Point) {
         root.menu-id = id;
-        root.menu-address = index >= 0 && index < AppState.hosts.length ? AppState.hosts[index].address : "";
+        root.menu-index = index >= 0 && index < AppState.hosts.length ? index : -1;
         list-menu.show(position);
     }
 
@@ -458,13 +460,40 @@ export component MainView inherits Rectangle {
                         activated => { AppState.duplicate-host(root.menu-id); }
                     }
                     MenuSeparator { }
+                    // v0.2 remote management. Menu items have no tooltips: hosts without remote
+                    // management get "Set up remote management…" instead.
+                    MenuItem {
+                        title: @tr("Restart…");
+                        enabled: root.menu-host-ok && RemoteRules.can-power(root.menu-host);
+                        activated => { AppState.restart-host(root.menu-id); }
+                    }
+                    MenuItem {
+                        title: @tr("Shut down…");
+                        enabled: root.menu-host-ok && RemoteRules.can-power(root.menu-host);
+                        activated => { AppState.shutdown-host(root.menu-id); }
+                    }
+                    if root.menu-host-ok && root.menu-host.remote-kind == RemoteKind.windows : MenuItem {
+                        title: @tr("Cancel shutdown");
+                        enabled: RemoteRules.can-abort(root.menu-host);
+                        activated => { AppState.abort-shutdown(root.menu-id); }
+                    }
+                    MenuItem {
+                        title: @tr("Get boot time");
+                        enabled: root.menu-host-ok && RemoteRules.can-power(root.menu-host);
+                        activated => { AppState.fetch-boot-time(root.menu-id); }
+                    }
+                    if root.menu-host-ok && !root.menu-host.managed : MenuItem {
+                        title: @tr("Set up remote management…");
+                        activated => { AppState.setup-remote(root.menu-id); }
+                    }
+                    MenuSeparator { }
                     MenuItem {
                         title: @tr("Copy MAC address");
                         activated => { AppState.copy-mac(root.menu-id); }
                     }
                     MenuItem {
                         title: @tr("Copy address");
-                        enabled: root.menu-address != "";
+                        enabled: root.menu-host-ok && root.menu-host.address != "";
                         activated => { AppState.copy-address(root.menu-id); }
                     }
                     MenuSeparator { }

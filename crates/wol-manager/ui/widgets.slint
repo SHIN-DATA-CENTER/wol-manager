@@ -107,11 +107,14 @@ export component StatusDot {
     in property <length> size: 10px;
 
     property <bool> hollow: root.status == HostStatus.unknown || root.status == HostStatus.not-monitored;
-    property <bool> pulsing: root.status == HostStatus.checking || root.status == HostStatus.waking;
+    property <bool> pulsing: root.status == HostStatus.checking || root.status == HostStatus.waking
+        || root.status == HostStatus.restarting || root.status == HostStatus.shutting-down;
     property <color> fill: root.status == HostStatus.online ? Theme.status-online
         : root.status == HostStatus.waking ? Theme.status-waking
         : root.status == HostStatus.timeout ? Theme.status-timeout
         : root.status == HostStatus.checking ? Theme.status-checking
+        : root.status == HostStatus.restarting ? Theme.status-restarting
+        : root.status == HostStatus.shutting-down ? Theme.status-shutting-down
         : Theme.status-offline;
 
     width: root.size;
@@ -659,4 +662,140 @@ export component BusySpinner inherits Spinner {
     indeterminate: true;
     width: 16px;
     height: 16px;
+}
+
+/// Button for a destructive action (restart / shut down): fluent metrics, Windows error red.
+/// Keyboard: Space / Enter, 2 px focus ring.
+export component DangerButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    out property <bool> has-focus: fs.has-focus;
+    callback clicked();
+
+    min-width: max(32px, layout.min-width);
+    min-height: max(32px, layout.min-height);
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 4px;
+    background: !root.enabled ? Theme.subtle-fill : ta.pressed ? Theme.danger-pressed : ta.has-hover ? Theme.danger-hover : Theme.danger;
+    border-width: root.enabled ? 0px : 1px;
+    border-color: Theme.card-border;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+
+    layout := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 5px;
+        padding-bottom: 5px;
+        spacing: 6px;
+        alignment: center;
+        if root.icon.width > 0 : Image {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            colorize: root.enabled ? Theme.danger-text : Theme.text-tertiary;
+            cross-axis-self-alignment: center;
+            accessible-role: none;
+        }
+        Text {
+            text: root.text;
+            color: root.enabled ? Theme.danger-text : Theme.text-tertiary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus && root.enabled : Rectangle {
+        x: -3px;
+        y: -3px;
+        width: parent.width + 6px;
+        height: parent.height + 6px;
+        border-radius: root.border-radius + 3px;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+/// Container for conditional content (`if` / `for`) that contains wrapped text. Slint 1.18
+/// reports the single-line height of such repeated content to the parent layout (dialog cards
+/// were cut off and ScrollViews did not reach the end); reading the inner layout's
+/// preferred-height gives the wrapped height, so this pins min-height to it.
+export component WrapBox inherits Rectangle {
+    in property <length> spacing: 0px;
+    min-height: box.preferred-height;
+    vertical-stretch: 0;
+    box := VerticalLayout {
+        spacing: root.spacing;
+        @children
+    }
+}
+
+/// Small rounded label, e.g. "Default route" in the MAC picker.
+export component Pill inherits Rectangle {
+    in property <string> text;
+    in property <color> fg: Theme.info-fg;
+    in property <color> bg: Theme.info-bg;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 9px;
+    background: root.bg;
+    height: 18px;
+    width: label.preferred-width + 14px;
+    label := Text {
+        x: 7px;
+        width: parent.width - 14px;
+        height: parent.height;
+        text: root.text;
+        color: root.fg;
+        font-size: 11px;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+}
+
+/// Label + value line for dialog details (fixed label column). The value may be monospace.
+export component DetailRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> mono;
+    in property <length> label-width: 110px;
+    in property <color> value-color: Theme.text;
+    spacing: 12px;
+    Text {
+        width: root.label-width;
+        text: root.label;
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        vertical-alignment: top;
+        wrap: word-wrap;
+    }
+    Text {
+        horizontal-stretch: 1;
+        text: root.value;
+        color: root.value-color;
+        font-family: root.mono ? Theme.mono-font : "";
+        font-size: root.mono ? 12px : Theme.font-body;
+        wrap: root.mono ? TextWrap.char-wrap : TextWrap.word-wrap;
+    }
 }

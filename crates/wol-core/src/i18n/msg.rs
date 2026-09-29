@@ -7,9 +7,12 @@ use serde::Serialize;
 use super::Lang;
 use crate::error::{Error, Field, FieldError, FieldIssue};
 use crate::model::{ConfigIssue, ParseNote};
+use crate::model::{RemoteKind, SudoMode};
 use crate::netif::{AddrNote, IfKind, Reason};
 use crate::pathenv::{PathChange, Scope};
 use crate::probe::{HostState, ProbeVia};
+use crate::remote::{NicKind, PowerAction};
+use crate::secret::SecretKind;
 use crate::send::{PlanNote, SendKind, WakeOutcome};
 use crate::store::{ConfigSource, LoadWarning, ReadOnlyReason};
 
@@ -31,6 +34,10 @@ pub enum StatusLabel {
     Timeout,
     /// No address or probe method `none`.
     NotMonitored,
+    /// A restart was accepted; waiting for the host to come back with a new boot.
+    Restarting,
+    /// A shutdown was accepted; waiting for the host to stop answering.
+    ShuttingDown,
 }
 
 /// Table column headers (CLI).
@@ -85,6 +92,16 @@ pub enum Header {
     Path,
     /// Settings source.
     Source,
+    /// Boot time.
+    Boot,
+    /// Uptime.
+    Uptime,
+    /// Operating system.
+    Os,
+    /// User name.
+    User,
+    /// Host key fingerprint.
+    Fingerprint,
 }
 
 /// A translatable runtime message.
@@ -362,6 +379,182 @@ pub enum Msg {
         len: usize,
     },
 
+    // ---- remote management (v0.2.0) ----
+    /// "restart" / "shutdown" as a word.
+    PowerActionName(PowerAction),
+    /// A power request was accepted and runs now.
+    PowerAccepted {
+        /// Host label.
+        label: String,
+        /// The action.
+        action: PowerAction,
+    },
+    /// A Windows power request was scheduled with a countdown.
+    PowerScheduled {
+        /// Host label.
+        label: String,
+        /// The action.
+        action: PowerAction,
+        /// Countdown in seconds.
+        secs: u32,
+    },
+    /// A pending shutdown / restart was cancelled.
+    ShutdownAborted {
+        /// Host label.
+        label: String,
+    },
+    /// There was nothing to cancel (informational).
+    NoShutdownPending {
+        /// Host label.
+        label: String,
+    },
+    /// Waiting for the result of a restart / shutdown (`--wait`).
+    VerifyWaiting {
+        /// Host label.
+        label: String,
+        /// The action.
+        action: PowerAction,
+        /// Timeout in seconds.
+        secs: u64,
+    },
+    /// The restart was confirmed (back online with a new boot).
+    RestartVerified {
+        /// Host label.
+        label: String,
+    },
+    /// The shutdown was confirmed (the host stopped answering).
+    ShutdownVerified {
+        /// Host label.
+        label: String,
+    },
+    /// Not confirmed before the timeout.
+    VerifyTimedOut {
+        /// Host label.
+        label: String,
+        /// The action.
+        action: PowerAction,
+        /// Timeout in seconds.
+        secs: u64,
+    },
+    /// A shutdown cannot be verified because the host is not monitored.
+    VerifyNotMonitored {
+        /// Host label.
+        label: String,
+    },
+    /// Remote management kind name ("Windows" / "Linux (SSH)").
+    RemoteKindName(RemoteKind),
+    /// "Not managed" (kind none).
+    RemoteNone,
+    /// Tooltip / accessible label of the row badge ("Remote management: Windows").
+    RemoteBadge(RemoteKind),
+    /// Remote management is not set up (disabled menu items, CLI hints).
+    RemoteNotSetUp,
+    /// sudo mode name.
+    SudoModeName(SudoMode),
+    /// Secret kind name ("login password"...).
+    SecretKindName(SecretKind),
+    /// A secret was stored.
+    SecretSaved {
+        /// Host label.
+        label: String,
+        /// Kind.
+        kind: SecretKind,
+    },
+    /// A secret was deleted.
+    SecretDeleted {
+        /// Host label.
+        label: String,
+        /// Kind.
+        kind: SecretKind,
+    },
+    /// No such secret is stored.
+    SecretNotStored {
+        /// Host label.
+        label: String,
+        /// Kind.
+        kind: SecretKind,
+    },
+    /// Orphaned secrets were deleted.
+    SecretsPruned {
+        /// How many.
+        count: usize,
+    },
+    /// Where secrets are kept (settings page / `wolm cred`).
+    SecretsStorageNote,
+    /// "Test connection" succeeded.
+    RemoteTestOk {
+        /// Host label.
+        label: String,
+        /// OS description, when known.
+        os: Option<String>,
+    },
+    /// The account is probably not an administrator / root.
+    RemoteNotAdmin,
+    /// Administrator rights could not be checked (Windows: WMI failed; no claim why).
+    RemoteAdminUnknown,
+    /// Windows: WMI refused the account although it could connect: not an administrator of
+    /// the host, or UAC remote restrictions (KB951016) filtered its token.
+    RemoteWmiDenied,
+    /// Windows: administrator rights could not be checked because WMI is not reachable
+    /// (firewall); "Get from IP" needs WMI.
+    RemoteWmiUnreachable,
+    /// A host key was pinned.
+    HostKeyTrusted {
+        /// Host label.
+        label: String,
+        /// Fingerprint.
+        fingerprint: String,
+    },
+    /// A host key was pinned because `~/.ssh/known_hosts` already trusts it.
+    HostKeyFromKnownHosts {
+        /// Host label.
+        label: String,
+        /// Fingerprint.
+        fingerprint: String,
+    },
+    /// The pinned host key was removed.
+    HostKeyForgotten {
+        /// Host label.
+        label: String,
+    },
+    /// No host key is pinned.
+    HostKeyNotPinned {
+        /// Host label.
+        label: String,
+    },
+    /// Where to check a fingerprint on the host (`ssh-keygen -lf ...`).
+    HostKeyCheckHint {
+        /// Key algorithm (`ssh-ed25519`...).
+        algorithm: String,
+    },
+    /// `wolm ssh trust --fingerprint`: the host presented another key.
+    HostKeyFingerprintMismatch {
+        /// Fingerprint given by the user.
+        expected: String,
+        /// Fingerprint of the presented key.
+        actual: String,
+    },
+    /// NIC kind name.
+    NicKindName(NicKind),
+    /// Badge: carries the default route.
+    MacDefaultRoute,
+    /// Badge: link down.
+    MacLinkDown,
+    /// Badge: recommended candidate.
+    MacRecommended,
+    /// WoL is supported but disabled on a NIC of the host.
+    WolDisabledOn {
+        /// Interface name.
+        iface: String,
+    },
+    /// The host reported several NICs.
+    MacCandidatesFound {
+        /// Host label.
+        label: String,
+        /// Number of candidates.
+        count: usize,
+    },
+
     // ---- misc ----
     /// Double-click pause.
     PressEnter,
@@ -490,6 +683,8 @@ impl Msg {
                 StatusLabel::Waking => "起動中…",
                 StatusLabel::Timeout => "応答なし",
                 StatusLabel::NotMonitored => "監視なし",
+                StatusLabel::Restarting => "再起動中…",
+                StatusLabel::ShuttingDown => "シャットダウン中…",
             }
             .to_owned(),
             ProbeVia(v) => match v {
@@ -563,6 +758,9 @@ impl Msg {
                 crate::store::LoadWarning::Parse(ParseNote::DuplicateIdReplaced {
                     name, ..
                 }) => format!("ホスト「{name}」の ID が重複していたため、新しい ID を割り当てました"),
+                crate::store::LoadWarning::Parse(ParseNote::UnsupportedRemote { name, value }) => format!(
+                    "ホスト「{name}」のリモート管理の設定（{value}）はこのバージョンでは使えないため、リモート管理なしとして扱います（設定はそのまま残ります）"
+                ),
                 crate::store::LoadWarning::MarkerIgnored { marker } => {
                     Msg::MarkerIgnored {
                         marker: marker.display().to_string(),
@@ -608,6 +806,15 @@ impl Msg {
                 crate::error::Field::Interfaces => "インターフェース",
                 crate::error::Field::Probe => "状態確認の方法",
                 crate::error::Field::TcpPorts => "TCP ポート",
+                crate::error::Field::RemoteKind => "リモート管理",
+                crate::error::Field::RemoteUser => "ユーザー名",
+                crate::error::Field::RemoteAddress => "管理用アドレス",
+                crate::error::Field::SshPort => "SSH ポート",
+                crate::error::Field::SshKeyFile => "鍵ファイル",
+                crate::error::Field::SshHostKey => "ホスト鍵",
+                crate::error::Field::SshSudo => "管理者権限 (sudo)",
+                crate::error::Field::RebootCommand => "再起動コマンド",
+                crate::error::Field::ShutdownCommand => "シャットダウン コマンド",
             }
             .to_owned(),
             FieldIssue(i) => match i {
@@ -639,6 +846,15 @@ impl Msg {
                     "MAC アドレスと区別できない名前は使えません"
                 }
                 crate::error::FieldIssue::NameTooLong => "名前は 64 文字以内にしてください",
+                crate::error::FieldIssue::InvalidUser => {
+                    "ユーザー名に使用できない文字が含まれています"
+                }
+                crate::error::FieldIssue::InvalidCommand => {
+                    "コマンドに使えない文字（' \" \\ ! $ `）が含まれているか、512 バイトを超えています"
+                }
+                crate::error::FieldIssue::InvalidHostKey => {
+                    "OpenSSH 形式の公開鍵（例: ssh-ed25519 AAAA...）ではありません"
+                }
                 crate::error::FieldIssue::ImeKana => {
                     "日本語入力（IME）をオフにして入力してください"
                 }
@@ -718,6 +934,139 @@ impl Msg {
             }
             Yes => "はい".to_owned(),
             No => "いいえ".to_owned(),
+            PowerActionName(a) => match a {
+                PowerAction::Restart => "再起動",
+                PowerAction::Shutdown => "シャットダウン",
+            }
+            .to_owned(),
+            PowerAccepted { label, action } => match action {
+                PowerAction::Restart => format!("{label} を再起動しています"),
+                PowerAction::Shutdown => format!("{label} をシャットダウンしています"),
+            },
+            PowerScheduled {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => format!("{label} は {secs} 秒後に再起動します"),
+                PowerAction::Shutdown => {
+                    format!("{label} は {secs} 秒後にシャットダウンします")
+                }
+            },
+            ShutdownAborted { label } => {
+                format!("{label} のシャットダウン（再起動）を取り消しました")
+            }
+            NoShutdownPending { label } => {
+                format!("{label} には取り消せるシャットダウンや再起動がありません")
+            }
+            VerifyWaiting {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => {
+                    format!("{label} の再起動を待っています（最大 {secs} 秒）…")
+                }
+                PowerAction::Shutdown => {
+                    format!("{label} のシャットダウンを待っています（最大 {secs} 秒）…")
+                }
+            },
+            RestartVerified { label } => format!("{label} の再起動が完了しました"),
+            ShutdownVerified { label } => format!("{label} がシャットダウンしました"),
+            VerifyTimedOut {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => {
+                    format!("{label} の再起動を {secs} 秒以内に確認できませんでした")
+                }
+                PowerAction::Shutdown => {
+                    format!("{label} のシャットダウンを {secs} 秒以内に確認できませんでした")
+                }
+            },
+            VerifyNotMonitored { label } => format!(
+                "{label} の状態を確認できないため（状態を確認しない設定、または応答を確認できない）、シャットダウンしたかどうかは確認できません"
+            ),
+            RemoteKindName(k) => super::remote::kind_name(*k, Lang::Ja).to_owned(),
+            RemoteNone => "なし".to_owned(),
+            RemoteBadge(k) => format!("リモート管理: {}", super::remote::kind_name(*k, Lang::Ja)),
+            RemoteNotSetUp => {
+                "リモート管理が設定されていません（ホストの編集で設定できます）".to_owned()
+            }
+            SudoModeName(m) => match m {
+                SudoMode::Auto => "自動",
+                SudoMode::Root => "root でログイン（sudo なし）",
+                SudoMode::NoPasswd => "NOPASSWD（パスワードなしの sudo）",
+                SudoMode::Password => "パスワード（ログインと同じ）",
+                SudoMode::Separate => "別のパスワード",
+            }
+            .to_owned(),
+            SecretKindName(k) => match k {
+                SecretKind::Login => "ログイン パスワード",
+                SecretKind::KeyPassphrase => "鍵のパスフレーズ",
+                SecretKind::Sudo => "sudo のパスワード",
+            }
+            .to_owned(),
+            SecretSaved { label, kind } => format!(
+                "{label} の{}を保存しました",
+                Msg::SecretKindName(*kind).ja()
+            ),
+            SecretDeleted { label, kind } => format!(
+                "{label} の{}を削除しました",
+                Msg::SecretKindName(*kind).ja()
+            ),
+            SecretNotStored { label, kind } => format!(
+                "{label} の{}は保存されていません",
+                Msg::SecretKindName(*kind).ja()
+            ),
+            SecretsPruned { count } => {
+                format!("使われていない資格情報を {count} 件削除しました")
+            }
+            SecretsStorageNote => "パスワードは Windows 資格情報マネージャーに、この PC のこの Windows ユーザー専用として保存されます。config.toml、エクスポート、ポータブル版のデータには含まれません。この Windows ユーザーが使うすべての WoL Manager（インストール版、ポータブル版、別の設定フォルダー）で共有されます。保存したパスワードは、保存したときの接続先（種類・アドレス・ポート・ユーザー名）にだけ使われます。".to_owned(),
+            RemoteTestOk { label, os } => match os {
+                Some(os) => format!("{label} に接続できました（{os}）"),
+                None => format!("{label} に接続できました"),
+            },
+            RemoteNotAdmin => "このユーザーは管理者（root / sudo）ではない可能性があります。再起動とシャットダウンには管理者権限が必要です。".to_owned(),
+            RemoteAdminUnknown => "管理者権限を確認できませんでした。再起動とシャットダウンには管理者権限が必要です。".to_owned(),
+            RemoteWmiDenied => "WMI への接続が拒否されたため、管理者として接続できていません。このアカウントが相手の PC の管理者ではないか、ワークグループの PC のローカル アカウント（Microsoft アカウントを含む）が UAC のリモート制限（KB951016）を受けています。ドメインの管理者アカウントか組み込みの Administrator を使うか、影響を理解したうえで相手の PC のレジストリ値 LocalAccountTokenFilterPolicy を 1 にしてください（詳しくは README）。再起動・シャットダウン・MAC アドレスの取得には管理者権限が必要です。".to_owned(),
+            RemoteWmiUnreachable => "管理者権限を確認できませんでした（WMI に接続できません）。MAC アドレスの取得には、相手の PC のファイアウォールで「Windows Management Instrumentation (WMI)」の受信規則を有効にしてください。再起動とシャットダウンには管理者権限が必要です。".to_owned(),
+            HostKeyTrusted { label, fingerprint } => {
+                format!("{label} のホスト鍵を信頼しました（{fingerprint}）")
+            }
+            HostKeyFromKnownHosts { label, fingerprint } => format!(
+                "{label} のホスト鍵は ~/.ssh/known_hosts に登録済みのため、信頼しました（{fingerprint}）"
+            ),
+            HostKeyForgotten { label } => format!(
+                "{label} のホスト鍵の信頼を解除しました（次の接続時に確認します）"
+            ),
+            HostKeyNotPinned { label } => format!("{label} には信頼済みのホスト鍵がありません"),
+            HostKeyCheckHint { algorithm } => format!(
+                "相手のホストで `{}` を実行すると、フィンガープリントを確認できます。",
+                super::remote::keygen_hint(algorithm)
+            ),
+            HostKeyFingerprintMismatch { expected, actual } => format!(
+                "ホストが提示した鍵のフィンガープリント（{actual}）が、指定されたもの（{expected}）と一致しません"
+            ),
+            NicKindName(k) => match k {
+                NicKind::Physical => "有線",
+                NicKind::Wifi => "Wi-Fi",
+                NicKind::Other => "その他",
+            }
+            .to_owned(),
+            MacDefaultRoute => "既定のルート".to_owned(),
+            MacLinkDown => "未接続".to_owned(),
+            MacRecommended => "推奨".to_owned(),
+            WolDisabledOn { iface } => format!(
+                "{iface} では Wake-on-LAN が無効になっています（ホスト側で有効にしてください。例: Linux は ethtool -s {iface} wol g、FreeBSD は ifconfig {iface} wol_magic）"
+            ),
+            MacCandidatesFound { label, count: 1 } => format!(
+                "{label} で 1 個のネットワーク アダプターが見つかりました。起動に使うアダプターか確認してください"
+            ),
+            MacCandidatesFound { label, count } => format!(
+                "{label} で {count} 個のネットワーク アダプターが見つかりました。起動に使うものを選んでください"
+            ),
             Header(h) => match h {
                 super::Header::Status => "状態",
                 super::Header::Name => "名前",
@@ -743,6 +1092,11 @@ impl Msg {
                 super::Header::Scope => "範囲",
                 super::Header::Path => "パス",
                 super::Header::Source => "保存モード",
+                super::Header::Boot => "起動時刻",
+                super::Header::Uptime => "稼働時間",
+                super::Header::Os => "OS",
+                super::Header::User => "ユーザー",
+                super::Header::Fingerprint => "フィンガープリント",
             }
             .to_owned(),
         }
@@ -840,6 +1194,8 @@ impl Msg {
                 StatusLabel::Waking => "Waking...",
                 StatusLabel::Timeout => "No response",
                 StatusLabel::NotMonitored => "Not monitored",
+                StatusLabel::Restarting => "Restarting...",
+                StatusLabel::ShuttingDown => "Shutting down...",
             }
             .to_owned(),
             ProbeVia(v) => match v {
@@ -908,6 +1264,11 @@ impl Msg {
                 crate::store::LoadWarning::Parse(ParseNote::DuplicateIdReplaced {
                     name, ..
                 }) => format!("Host \"{name}\" had a duplicate id and got a new one"),
+                crate::store::LoadWarning::Parse(ParseNote::UnsupportedRemote { name, value }) => {
+                    format!(
+                        "The remote management settings of host \"{name}\" ({value}) are not supported by this version; the host is treated as not managed and the settings are kept as they are"
+                    )
+                }
                 crate::store::LoadWarning::MarkerIgnored { marker } => Msg::MarkerIgnored {
                     marker: marker.display().to_string(),
                 }
@@ -951,6 +1312,15 @@ impl Msg {
                 crate::error::Field::Interfaces => "Interfaces",
                 crate::error::Field::Probe => "Status check",
                 crate::error::Field::TcpPorts => "TCP ports",
+                crate::error::Field::RemoteKind => "Remote management",
+                crate::error::Field::RemoteUser => "User name",
+                crate::error::Field::RemoteAddress => "Management address",
+                crate::error::Field::SshPort => "SSH port",
+                crate::error::Field::SshKeyFile => "Key file",
+                crate::error::Field::SshHostKey => "Host key",
+                crate::error::Field::SshSudo => "Administrator rights (sudo)",
+                crate::error::Field::RebootCommand => "Reboot command",
+                crate::error::Field::ShutdownCommand => "Shutdown command",
             }
             .to_owned(),
             FieldIssue(i) => match i {
@@ -976,6 +1346,15 @@ impl Msg {
                     "The name must not look like a MAC address"
                 }
                 crate::error::FieldIssue::NameTooLong => "Use at most 64 characters",
+                crate::error::FieldIssue::InvalidUser => {
+                    "The user name contains characters that are not allowed"
+                }
+                crate::error::FieldIssue::InvalidCommand => {
+                    "The command contains a character that is not allowed (' \" \\ ! $ `) or is longer than 512 bytes"
+                }
+                crate::error::FieldIssue::InvalidHostKey => {
+                    "Not an OpenSSH public key (e.g. ssh-ed25519 AAAA...)"
+                }
                 crate::error::FieldIssue::ImeKana => {
                     "Turn off the Japanese input method (IME) and type again"
                 }
@@ -1050,6 +1429,131 @@ impl Msg {
             }
             Yes => "yes".to_owned(),
             No => "no".to_owned(),
+            PowerActionName(a) => a.as_str().to_owned(),
+            PowerAccepted { label, action } => match action {
+                PowerAction::Restart => format!("Restarting {label}"),
+                PowerAction::Shutdown => format!("Shutting down {label}"),
+            },
+            PowerScheduled {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => format!("{label} will restart in {secs} s"),
+                PowerAction::Shutdown => format!("{label} will shut down in {secs} s"),
+            },
+            ShutdownAborted { label } => {
+                format!("Cancelled the pending shutdown / restart of {label}")
+            }
+            NoShutdownPending { label } => {
+                format!("{label} has no pending shutdown or restart to cancel")
+            }
+            VerifyWaiting {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => {
+                    format!("Waiting for {label} to restart (up to {secs} s)...")
+                }
+                PowerAction::Shutdown => {
+                    format!("Waiting for {label} to shut down (up to {secs} s)...")
+                }
+            },
+            RestartVerified { label } => format!("{label} has restarted"),
+            ShutdownVerified { label } => format!("{label} has shut down"),
+            VerifyTimedOut {
+                label,
+                action,
+                secs,
+            } => match action {
+                PowerAction::Restart => {
+                    format!("Could not confirm the restart of {label} within {secs} s")
+                }
+                PowerAction::Shutdown => {
+                    format!("Could not confirm the shutdown of {label} within {secs} s")
+                }
+            },
+            VerifyNotMonitored { label } => format!(
+                "The status of {label} cannot be checked (not monitored, or it never answered the check), so its shutdown cannot be confirmed"
+            ),
+            RemoteKindName(k) => super::remote::kind_name(*k, Lang::En).to_owned(),
+            RemoteNone => "none".to_owned(),
+            RemoteBadge(k) => format!(
+                "Remote management: {}",
+                super::remote::kind_name(*k, Lang::En)
+            ),
+            RemoteNotSetUp => {
+                "Remote management is not set up (set it up in the host editor)".to_owned()
+            }
+            SudoModeName(m) => match m {
+                SudoMode::Auto => "automatic",
+                SudoMode::Root => "log in as root (no sudo)",
+                SudoMode::NoPasswd => "NOPASSWD (sudo without a password)",
+                SudoMode::Password => "password (same as the login)",
+                SudoMode::Separate => "separate password",
+            }
+            .to_owned(),
+            SecretKindName(k) => match k {
+                SecretKind::Login => "login password",
+                SecretKind::KeyPassphrase => "key passphrase",
+                SecretKind::Sudo => "sudo password",
+            }
+            .to_owned(),
+            SecretSaved { label, kind } => {
+                format!("Saved the {} of {label}", Msg::SecretKindName(*kind).en())
+            }
+            SecretDeleted { label, kind } => {
+                format!("Deleted the {} of {label}", Msg::SecretKindName(*kind).en())
+            }
+            SecretNotStored { label, kind } => {
+                format!("No {} is stored for {label}", Msg::SecretKindName(*kind).en())
+            }
+            SecretsPruned { count } => format!("Deleted {count} unused credential(s)"),
+            SecretsStorageNote => "Passwords are kept in Windows Credential Manager, for this Windows user on this PC only. They are never written to config.toml, exports or portable data. All copies of WoL Manager this Windows user runs (installed, portable, other settings folders) share them. A saved password is only used for the connection it was saved for (kind, address, port, user name).".to_owned(),
+            RemoteTestOk { label, os } => match os {
+                Some(os) => format!("Connected to {label} ({os})"),
+                None => format!("Connected to {label}"),
+            },
+            RemoteNotAdmin => "This user is probably not an administrator (root / sudo). Restart and shutdown need administrator rights.".to_owned(),
+            RemoteAdminUnknown => "Administrator rights could not be checked. Restart and shutdown need administrator rights.".to_owned(),
+            RemoteWmiDenied => "WMI refused the connection, so this account is not treated as an administrator: it is not an administrator of the target, or it is a local account (including a Microsoft account) of a workgroup PC that UAC remote restrictions (KB951016) apply to. Use a domain administrator or the built-in Administrator, or, knowing the security impact, set LocalAccountTokenFilterPolicy to 1 on the target (see the README). Restart, shutdown and reading the MAC address need administrator rights.".to_owned(),
+            RemoteWmiUnreachable => "Administrator rights could not be checked (WMI is not reachable). To read the MAC address, enable the \"Windows Management Instrumentation (WMI)\" inbound rules in the target's firewall. Restart and shutdown need administrator rights.".to_owned(),
+            HostKeyTrusted { label, fingerprint } => {
+                format!("Trusted the host key of {label} ({fingerprint})")
+            }
+            HostKeyFromKnownHosts { label, fingerprint } => format!(
+                "Trusted the host key of {label} because ~/.ssh/known_hosts already has it ({fingerprint})"
+            ),
+            HostKeyForgotten { label } => {
+                format!("Forgot the host key of {label} (the next connection asks again)")
+            }
+            HostKeyNotPinned { label } => format!("No host key is trusted for {label}"),
+            HostKeyCheckHint { algorithm } => format!(
+                "Run `{}` on the host to see its fingerprint.",
+                super::remote::keygen_hint(algorithm)
+            ),
+            HostKeyFingerprintMismatch { expected, actual } => format!(
+                "The host presented a key with the fingerprint {actual}, not the expected {expected}"
+            ),
+            NicKindName(k) => match k {
+                NicKind::Physical => "Ethernet",
+                NicKind::Wifi => "Wi-Fi",
+                NicKind::Other => "Other",
+            }
+            .to_owned(),
+            MacDefaultRoute => "default route".to_owned(),
+            MacLinkDown => "disconnected".to_owned(),
+            MacRecommended => "recommended".to_owned(),
+            WolDisabledOn { iface } => format!(
+                "Wake-on-LAN is disabled on {iface} (enable it on the host, e.g. Linux: ethtool -s {iface} wol g, FreeBSD: ifconfig {iface} wol_magic)"
+            ),
+            MacCandidatesFound { label, count: 1 } => format!(
+                "{label} reported 1 network adapter. Check that it is the one to wake it with"
+            ),
+            MacCandidatesFound { label, count } => format!(
+                "{label} reported {count} network adapters. Choose the one to wake it with"
+            ),
             Header(h) => match h {
                 super::Header::Status => "STATUS",
                 super::Header::Name => "NAME",
@@ -1075,6 +1579,11 @@ impl Msg {
                 super::Header::Scope => "SCOPE",
                 super::Header::Path => "PATH",
                 super::Header::Source => "MODE",
+                super::Header::Boot => "BOOTED",
+                super::Header::Uptime => "UPTIME",
+                super::Header::Os => "OS",
+                super::Header::User => "USER",
+                super::Header::Fingerprint => "FINGERPRINT",
             }
             .to_owned(),
         }
@@ -1368,6 +1877,83 @@ pub(super) fn describe_error(err: &Error, lang: Lang) -> String {
                 format!("Not supported: {m}")
             }
         }
+        Error::RemoteNotConfigured { host } => {
+            if ja {
+                format!(
+                    "ホスト「{host}」のリモート管理が設定されていません。ホストの編集画面（または wolm remote set）で Windows か SSH を設定してください。"
+                )
+            } else {
+                format!(
+                    "Remote management is not set up for \"{host}\". Set up Windows or SSH in the host editor (or with wolm remote set)."
+                )
+            }
+        }
+        Error::RemoteNoAddress { host } => {
+            if ja {
+                format!("ホスト「{host}」にはアドレスも管理用アドレスも設定されていません。")
+            } else {
+                format!("\"{host}\" has neither an address nor a management address.")
+            }
+        }
+        Error::RemoteUnsupported { host, kind, op } => {
+            let k = super::remote::kind_name(*kind, lang);
+            match (op, ja) {
+                (crate::remote::RemoteOp::AbortShutdown, true) => format!(
+                    "シャットダウンの取り消しは Windows のホストでのみ使えます（{host} は {k}）。"
+                ),
+                (crate::remote::RemoteOp::AbortShutdown, false) => format!(
+                    "Cancelling a shutdown is only available for Windows hosts ({host} is {k})."
+                ),
+                (op, true) => format!(
+                    "{host}: {}は {k} のホストでは使えません。",
+                    super::remote::op_name(*op, lang)
+                ),
+                (op, false) => format!(
+                    "{host}: {} is not available for {k} hosts.",
+                    super::remote::op_name(*op, lang)
+                ),
+            }
+        }
+        Error::UnknownHostKey(p) => super::remote::describe_unknown_key(p, lang),
+        Error::HostKeyMismatch(p) => super::remote::describe_mismatch(p, lang),
+        Error::RemoteChanged { host } => {
+            if ja {
+                format!(
+                    "{host} のリモート管理の設定（管理用アドレス・SSH ポート・信頼済みのホスト鍵）がホスト鍵の確認中に変更されたため、ホスト鍵を保存しませんでした。もう一度接続して、ホスト鍵を確認してください。"
+                )
+            } else {
+                format!(
+                    "The remote management of {host} (management address, SSH port or trusted host key) changed while its host key was being checked, so the key was not saved. Connect again and check the host key."
+                )
+            }
+        }
+        Error::Remote(e) => super::remote::describe_remote(e, lang),
+        Error::MacNeedsRemote { ip, via_vpn } => match (ja, via_vpn) {
+            (true, true) => format!(
+                "{ip} は VPN 経由のアドレスです。VPN（NetBird など）経由のホストは ARP で MAC を取得できません。ホストの「リモート管理」（Windows / SSH）を設定すると、相手の物理 NIC の MAC を取得できます。"
+            ),
+            (true, false) => format!(
+                "{ip} はこの PC と同じネットワーク（サブネット）にないため、ARP で MAC を取得できません。ホストの「リモート管理」（Windows / SSH）を設定すると、相手の物理 NIC の MAC を取得できます。"
+            ),
+            (false, true) => format!(
+                "{ip} is reached through a VPN (e.g. NetBird). The MAC address of a host behind a VPN cannot be read by ARP. Set up the host's remote management (Windows / SSH) to read the MAC address of its physical network adapter."
+            ),
+            (false, false) => format!(
+                "{ip} is not on this PC's local network, so its MAC address cannot be read by ARP. Set up the host's remote management (Windows / SSH) to read the MAC address of its physical network adapter."
+            ),
+        },
+        Error::VerifyTimeout {
+            label,
+            action,
+            secs,
+        } => t(Msg::VerifyTimedOut {
+            label: label.clone(),
+            action: *action,
+            secs: *secs,
+        }),
+        Error::SecretStore { failure, detail } => {
+            super::remote::describe_secret_store(*failure, detail, lang)
+        }
         Error::AppRunningWithOtherSettings { running, requested } => {
             if ja {
                 format!(
@@ -1531,6 +2117,468 @@ mod tests {
             Msg::No,
             Msg::Header(Header::Rtt),
         ]
+    }
+
+    /// Every message added for remote management (v0.2.0), with every enum value.
+    fn every_remote_msg() -> Vec<Msg> {
+        let label = || "PC".to_owned();
+        let mut v = Vec::new();
+        for action in [PowerAction::Restart, PowerAction::Shutdown] {
+            v.extend([
+                Msg::PowerActionName(action),
+                Msg::PowerAccepted {
+                    label: label(),
+                    action,
+                },
+                Msg::PowerScheduled {
+                    label: label(),
+                    action,
+                    secs: 30,
+                },
+                Msg::VerifyWaiting {
+                    label: label(),
+                    action,
+                    secs: 600,
+                },
+                Msg::VerifyTimedOut {
+                    label: label(),
+                    action,
+                    secs: 600,
+                },
+            ]);
+        }
+        for k in RemoteKind::ALL {
+            v.push(Msg::RemoteKindName(*k));
+            v.push(Msg::RemoteBadge(*k));
+        }
+        for m in SudoMode::ALL {
+            v.push(Msg::SudoModeName(*m));
+        }
+        for k in SecretKind::ALL {
+            v.extend([
+                Msg::SecretKindName(k),
+                Msg::SecretSaved {
+                    label: label(),
+                    kind: k,
+                },
+                Msg::SecretDeleted {
+                    label: label(),
+                    kind: k,
+                },
+                Msg::SecretNotStored {
+                    label: label(),
+                    kind: k,
+                },
+            ]);
+        }
+        for k in [NicKind::Physical, NicKind::Wifi, NicKind::Other] {
+            v.push(Msg::NicKindName(k));
+        }
+        for s in [StatusLabel::Restarting, StatusLabel::ShuttingDown] {
+            v.push(Msg::Status(s));
+        }
+        for h in [
+            Header::Boot,
+            Header::Uptime,
+            Header::Os,
+            Header::User,
+            Header::Fingerprint,
+        ] {
+            v.push(Msg::Header(h));
+        }
+        v.extend([
+            Msg::ShutdownAborted { label: label() },
+            Msg::NoShutdownPending { label: label() },
+            Msg::RestartVerified { label: label() },
+            Msg::ShutdownVerified { label: label() },
+            Msg::VerifyNotMonitored { label: label() },
+            Msg::RemoteNone,
+            Msg::RemoteNotSetUp,
+            Msg::SecretsPruned { count: 2 },
+            Msg::SecretsStorageNote,
+            Msg::RemoteTestOk {
+                label: label(),
+                os: Some("Debian".into()),
+            },
+            Msg::RemoteTestOk {
+                label: label(),
+                os: None,
+            },
+            Msg::RemoteNotAdmin,
+            Msg::RemoteAdminUnknown,
+            Msg::RemoteWmiDenied,
+            Msg::RemoteWmiUnreachable,
+            Msg::HostKeyTrusted {
+                label: label(),
+                fingerprint: "SHA256:x".into(),
+            },
+            Msg::HostKeyFromKnownHosts {
+                label: label(),
+                fingerprint: "SHA256:x".into(),
+            },
+            Msg::HostKeyForgotten { label: label() },
+            Msg::HostKeyNotPinned { label: label() },
+            Msg::HostKeyCheckHint {
+                algorithm: "ssh-rsa".into(),
+            },
+            Msg::HostKeyFingerprintMismatch {
+                expected: "SHA256:a".into(),
+                actual: "SHA256:b".into(),
+            },
+            Msg::MacDefaultRoute,
+            Msg::MacLinkDown,
+            Msg::MacRecommended,
+            Msg::WolDisabledOn {
+                iface: "eno1".into(),
+            },
+            Msg::MacCandidatesFound {
+                label: label(),
+                count: 2,
+            },
+        ]);
+        v
+    }
+
+    /// Every field and issue (the remote ones included) has a label in both languages.
+    #[test]
+    fn every_field_and_issue_is_translated() {
+        use Field as F;
+        use FieldIssue as I;
+        let fields = [
+            F::Name,
+            F::Mac,
+            F::Address,
+            F::Group,
+            F::Notes,
+            F::Port,
+            F::SecureOn,
+            F::Targets,
+            F::Interfaces,
+            F::Probe,
+            F::TcpPorts,
+            F::RemoteKind,
+            F::RemoteUser,
+            F::RemoteAddress,
+            F::SshPort,
+            F::SshKeyFile,
+            F::SshHostKey,
+            F::SshSudo,
+            F::RebootCommand,
+            F::ShutdownCommand,
+        ];
+        let issues = [
+            I::Required,
+            I::InvalidMac,
+            I::MacNotUnicast,
+            I::InvalidAddress,
+            I::InvalidPort,
+            I::InvalidPortList,
+            I::TooManyPorts,
+            I::InvalidSecureOn,
+            I::InvalidTarget,
+            I::DuplicateName,
+            I::NameLooksLikeMac,
+            I::NameTooLong,
+            I::ImeKana,
+            I::InvalidUser,
+            I::InvalidCommand,
+            I::InvalidHostKey,
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for f in fields {
+            let (ja, en) = (Msg::Field(f).text(Lang::Ja), Msg::Field(f).text(Lang::En));
+            assert!(
+                !ja.is_empty() && en.is_ascii() && seen.insert(en.clone()),
+                "{f:?}"
+            );
+        }
+        for i in issues {
+            let (ja, en) = (
+                Msg::FieldIssue(i).text(Lang::Ja),
+                Msg::FieldIssue(i).text(Lang::En),
+            );
+            assert!(!ja.is_empty() && !en.is_empty() && en.is_ascii(), "{i:?}");
+        }
+    }
+
+    #[test]
+    fn remote_messages() {
+        for m in every_remote_msg() {
+            let ja = m.text(Lang::Ja);
+            let en = m.text(Lang::En);
+            assert!(!ja.is_empty() && !en.is_empty(), "{m:?}");
+            assert!(en.is_ascii(), "English text must be ASCII: {en}");
+        }
+        let t = |m: Msg, l| m.text(l);
+        assert_eq!(
+            t(
+                Msg::PowerScheduled {
+                    label: "PC".into(),
+                    action: PowerAction::Restart,
+                    secs: 30
+                },
+                Lang::Ja
+            ),
+            "PC は 30 秒後に再起動します"
+        );
+        assert_eq!(
+            t(
+                Msg::PowerAccepted {
+                    label: "PC".into(),
+                    action: PowerAction::Shutdown
+                },
+                Lang::Ja
+            ),
+            "PC をシャットダウンしています"
+        );
+        assert_eq!(
+            t(Msg::Status(StatusLabel::Restarting), Lang::Ja),
+            "再起動中…"
+        );
+        assert_eq!(
+            t(Msg::RemoteBadge(RemoteKind::Ssh), Lang::Ja),
+            "リモート管理: Linux (SSH)"
+        );
+        assert!(
+            t(
+                Msg::HostKeyCheckHint {
+                    algorithm: "ssh-ed25519".into()
+                },
+                Lang::En
+            )
+            .contains("ssh_host_ed25519_key.pub")
+        );
+        assert!(
+            t(
+                Msg::HostKeyCheckHint {
+                    algorithm: "ecdsa-sha2-nistp256".into()
+                },
+                Lang::En
+            )
+            .contains("ssh_host_ecdsa_key.pub")
+        );
+    }
+
+    #[test]
+    fn describes_remote_errors() {
+        use crate::error::{HostKeyProblem, SecretStoreFailure};
+        use crate::remote::{RemoteError, RemoteFailure, RemoteHint, RemoteOp, RemoteStage};
+        let problem = || {
+            Box::new(HostKeyProblem {
+                host: "pve".into(),
+                address: "100.105.1.2".into(),
+                port: 22,
+                algorithm: "ssh-ed25519".into(),
+                fingerprint: "SHA256:abc".into(),
+                openssh_line: "ssh-ed25519 AAAA".into(),
+                expected_fingerprint: Some("SHA256:old".into()),
+                in_known_hosts: true,
+            })
+        };
+        let remote = |failure, hint, backend| {
+            Error::Remote(Box::new(RemoteError {
+                host: "pve".into(),
+                address: "100.105.1.2".into(),
+                backend,
+                op: RemoteOp::Restart,
+                failure,
+                hint,
+                code: Some("error 5".into()),
+                detail: "detail".into(),
+            }))
+        };
+        let failures = [
+            RemoteFailure::Unreachable,
+            RemoteFailure::Timeout {
+                stage: RemoteStage::Resolve,
+            },
+            RemoteFailure::Timeout {
+                stage: RemoteStage::Connect,
+            },
+            RemoteFailure::Timeout {
+                stage: RemoteStage::Authentication,
+            },
+            RemoteFailure::Timeout {
+                stage: RemoteStage::Command,
+            },
+            RemoteFailure::Disconnected,
+            RemoteFailure::AuthFailed {
+                server_methods: vec![],
+            },
+            RemoteFailure::AuthFailed {
+                server_methods: vec!["publickey".into(), "password".into()],
+            },
+            RemoteFailure::AccessDenied,
+            RemoteFailure::CredentialConflict,
+            RemoteFailure::NoCredentials,
+            RemoteFailure::KeyFile {
+                path: "id.pub".into(),
+            },
+            RemoteFailure::KeyPassphraseRequired { path: "id".into() },
+            RemoteFailure::KeyPassphraseWrong { path: "id".into() },
+            RemoteFailure::AuthPartial {
+                methods: vec!["keyboard-interactive".into()],
+            },
+            RemoteFailure::AuthPromptUnsupported {
+                prompt: "Verification code:".into(),
+            },
+            RemoteFailure::NotRoot,
+            RemoteFailure::SudoPasswordRequired,
+            RemoteFailure::SudoWrongPassword,
+            RemoteFailure::SudoNotAllowed,
+            RemoteFailure::SudoNeedsTty,
+            RemoteFailure::SudoMissing,
+            RemoteFailure::LocalTarget,
+            RemoteFailure::InvalidInput,
+            RemoteFailure::Unsupported,
+            RemoteFailure::ShutdownInProgress,
+            RemoteFailure::NotReady,
+            RemoteFailure::UsersLoggedOn,
+            RemoteFailure::NoShutdownInProgress,
+            RemoteFailure::SecretStoreUnavailable,
+            RemoteFailure::Protocol,
+            RemoteFailure::ExecRefused,
+            RemoteFailure::CommandFailed {
+                exit_status: Some(1),
+                stderr: "boom".into(),
+            },
+            RemoteFailure::CommandFailed {
+                exit_status: None,
+                stderr: String::new(),
+            },
+            RemoteFailure::PowerUnconfirmed,
+            RemoteFailure::UnexpectedOutput,
+            RemoteFailure::NoCandidates,
+            RemoteFailure::Other,
+            RemoteFailure::SecretMismatch {
+                secret: SecretKind::Login,
+                stored_for: r"DESK\admin @ 192.168.1.20 (Windows)".into(),
+                expected_for: "root@100.105.1.2:22 (SSH)".into(),
+            },
+            RemoteFailure::SecretMismatch {
+                secret: SecretKind::Sudo,
+                stored_for: String::new(),
+                expected_for: String::new(),
+            },
+            RemoteFailure::PasswordRequired {
+                account: r"DESK\admin".into(),
+            },
+            RemoteFailure::Local,
+            RemoteFailure::SignInNotConfirmed,
+        ];
+        let hints = [
+            None,
+            Some(RemoteHint::UacRemoteRestriction),
+            Some(RemoteHint::SmbFirewall),
+            Some(RemoteHint::WmiFirewall),
+            Some(RemoteHint::RemoteShutdownFirewall),
+            Some(RemoteHint::WmiAccessDenied),
+            Some(RemoteHint::CheckCredentials),
+            Some(RemoteHint::StoreCredentials),
+            Some(RemoteHint::CloseOtherConnections),
+            Some(RemoteHint::RetryLater),
+            Some(RemoteHint::PasswordAuthDisabled),
+            Some(RemoteHint::SecretStoreUnavailable),
+            Some(RemoteHint::StoredSecretNotUsed),
+            Some(RemoteHint::CheckPort),
+        ];
+        let mut errors: Vec<Error> = Vec::new();
+        for (i, f) in failures.into_iter().enumerate() {
+            let backend = if i % 2 == 0 {
+                RemoteKind::Windows
+            } else {
+                RemoteKind::Ssh
+            };
+            errors.push(remote(f, hints[i % hints.len()], backend));
+        }
+        for h in hints {
+            errors.push(remote(RemoteFailure::AccessDenied, h, RemoteKind::Windows));
+        }
+        errors.extend([
+            Error::UnknownHostKey(problem()),
+            Error::HostKeyMismatch(problem()),
+            Error::HostKeyMismatch({
+                let mut p = problem();
+                p.fingerprint.clear();
+                p
+            }),
+            Error::RemoteNotConfigured { host: "pve".into() },
+            Error::RemoteChanged { host: "pve".into() },
+            Error::RemoteNoAddress { host: "pve".into() },
+            Error::RemoteUnsupported {
+                host: "pve".into(),
+                kind: RemoteKind::Ssh,
+                op: RemoteOp::AbortShutdown,
+            },
+            Error::RemoteUnsupported {
+                host: "pc".into(),
+                kind: RemoteKind::Windows,
+                op: RemoteOp::ScanHostKey,
+            },
+            Error::MacNeedsRemote {
+                ip: Ipv4Addr::new(100, 105, 1, 2),
+                via_vpn: true,
+            },
+            Error::MacNeedsRemote {
+                ip: Ipv4Addr::new(198, 51, 100, 7),
+                via_vpn: false,
+            },
+            Error::VerifyTimeout {
+                label: "pve".into(),
+                action: PowerAction::Restart,
+                secs: 600,
+            },
+            Error::SecretStore {
+                failure: SecretStoreFailure::Unavailable,
+                detail: "1312".into(),
+            },
+            Error::SecretStore {
+                failure: SecretStoreFailure::TooLong,
+                detail: "x".into(),
+            },
+            Error::SecretStore {
+                failure: SecretStoreFailure::Other,
+                detail: "x".into(),
+            },
+        ]);
+        for e in &errors {
+            let ja = describe_error(e, Lang::Ja);
+            let en = describe_error(e, Lang::En);
+            assert!(!ja.is_empty() && !en.is_empty(), "{e:?}");
+            assert!(en.is_ascii(), "{en}");
+            assert_ne!(ja, en);
+            assert!(!e.to_string().is_empty());
+        }
+        let unknown = describe_error(&Error::UnknownHostKey(problem()), Lang::Ja);
+        assert!(
+            unknown.contains("SHA256:abc") && unknown.contains("known_hosts"),
+            "{unknown}"
+        );
+        let mismatch = describe_error(&Error::HostKeyMismatch(problem()), Lang::En);
+        assert!(mismatch.contains("SHA256:old") && mismatch.contains("SHA256:abc"));
+        let e = remote(
+            RemoteFailure::AccessDenied,
+            Some(RemoteHint::UacRemoteRestriction),
+            RemoteKind::Windows,
+        );
+        let ja = describe_error(&e, Lang::Ja);
+        assert!(
+            ja.starts_with(
+                "pve（100.105.1.2）: 再起動を要求できませんでした。アクセスが拒否されました。"
+            ) && ja.contains("KB951016"),
+            "{ja}"
+        );
+        assert_eq!(
+            describe_error(
+                &Error::VerifyTimeout {
+                    label: "pve".into(),
+                    action: PowerAction::Shutdown,
+                    secs: 300
+                },
+                Lang::En
+            ),
+            "Could not confirm the shutdown of pve within 300 s"
+        );
     }
 
     #[test]

@@ -1,0 +1,11 @@
+WOLM1 hdr os=Linux uid=0
+WOLM1 route wg0 0
+WOLM1 if eno1 mac=aa:bb:cc:00:10:01 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=aa:bb:cc:00:10:01 wol=pumbg/g
+WOLM1 if enp2s0 mac=aa:bb:cc:00:10:02 type=1 kind=phys aat=0 oper=down carrier= lower=- perm=aa:bb:cc:00:10:02 wol=pumbg/d
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if wg0 mac=- type=65534 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if wlp3s0 mac=aa:bb:cc:00:10:09 type=1 kind=wifi aat=0 oper=up carrier=1 lower=- perm=aa:bb:cc:00:10:09 wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet eno1 192.168.0.7/24
+WOLM1 inet wg0 10.8.0.2/24
+WOLM1 end

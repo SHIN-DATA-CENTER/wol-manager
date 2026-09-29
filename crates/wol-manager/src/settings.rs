@@ -35,6 +35,10 @@ pub const DEBOUNCED_KEYS: &[&str] = &[
     "wake.interval_ms",
     "probe.timeout_ms",
     "probe.tcp_ports",
+    "remote.shutdown_delay_secs",
+    "remote.restart_verify_timeout_secs",
+    "remote.shutdown_verify_timeout_secs",
+    "remote.connect_timeout_ms",
 ];
 /// Debounce delay.
 pub const DEBOUNCE: Duration = Duration::from_millis(500);
@@ -58,6 +62,12 @@ pub const UI_KEYS: &[&str] = &[
     "wake.interval_ms",
     "wake.include_virtual",
     "gui.renderer",
+    "remote.shutdown_delay_secs",
+    "remote.force_apps_closed",
+    "remote.restart_verify_timeout_secs",
+    "remote.shutdown_verify_timeout_secs",
+    "remote.connect_timeout_ms",
+    "remote.auto_boot_time",
 ];
 
 /// `true` for keys that are debounced.
@@ -102,6 +112,23 @@ pub struct SettingsView {
     pub include_virtual: bool,
     /// 0 auto, 1 software.
     pub renderer_index: i32,
+    /// remote.shutdown_delay_secs.
+    pub remote_delay_secs: i32,
+    /// remote.force_apps_closed.
+    pub remote_force: bool,
+    /// remote.restart_verify_timeout_secs.
+    pub remote_restart_timeout_secs: i32,
+    /// remote.shutdown_verify_timeout_secs.
+    pub remote_shutdown_timeout_secs: i32,
+    /// remote.connect_timeout_ms, shown in seconds.
+    pub remote_connect_timeout_secs: i32,
+    /// remote.auto_boot_time.
+    pub remote_auto_boot_time: bool,
+}
+
+/// `remote.connect_timeout_ms` as the settings page shows it: whole seconds, at least 1.
+pub fn connect_timeout_secs(ms: u32) -> i32 {
+    clamp_i32(ms.saturating_add(500) / 1000).max(1)
 }
 
 fn clamp_i32(v: u32) -> i32 {
@@ -150,6 +177,12 @@ pub fn view_of(s: &Settings) -> SettingsView {
             Renderer::Auto => 0,
             Renderer::Software => 1,
         },
+        remote_delay_secs: clamp_i32(s.remote.shutdown_delay_secs),
+        remote_force: s.remote.force_apps_closed,
+        remote_restart_timeout_secs: clamp_i32(s.remote.restart_verify_timeout_secs),
+        remote_shutdown_timeout_secs: clamp_i32(s.remote.shutdown_verify_timeout_secs),
+        remote_connect_timeout_secs: connect_timeout_secs(s.remote.connect_timeout_ms),
+        remote_auto_boot_time: s.remote.auto_boot_time,
     }
 }
 
@@ -198,6 +231,33 @@ pub fn value_for(key: &str, v: &SettingsView) -> Option<String> {
         "wake.interval_ms" => Some(clamp_range(v.interval_ms, limits::INTERVAL_MS).to_string()),
         "wake.include_virtual" => b(v.include_virtual),
         "gui.renderer" => pick(v.renderer_index, &["auto", "software"]).map(str::to_owned),
+        "remote.shutdown_delay_secs" => {
+            Some(clamp_range(v.remote_delay_secs, limits::SHUTDOWN_DELAY_SECS).to_string())
+        }
+        "remote.force_apps_closed" => b(v.remote_force),
+        "remote.restart_verify_timeout_secs" => Some(
+            clamp_range(
+                v.remote_restart_timeout_secs,
+                limits::REMOTE_VERIFY_TIMEOUT_SECS,
+            )
+            .to_string(),
+        ),
+        "remote.shutdown_verify_timeout_secs" => Some(
+            clamp_range(
+                v.remote_shutdown_timeout_secs,
+                limits::REMOTE_VERIFY_TIMEOUT_SECS,
+            )
+            .to_string(),
+        ),
+        // Seconds in the UI, milliseconds in the file.
+        "remote.connect_timeout_ms" => Some(
+            clamp_range(
+                v.remote_connect_timeout_secs.saturating_mul(1000),
+                limits::CONNECT_TIMEOUT_MS,
+            )
+            .to_string(),
+        ),
+        "remote.auto_boot_time" => b(v.remote_auto_boot_time),
         _ => None,
     }
 }
@@ -294,6 +354,12 @@ pub fn read_view(ui: &AppWindow) -> SettingsView {
         interval_ms: s.get_interval_ms(),
         include_virtual: s.get_include_virtual(),
         renderer_index: s.get_renderer_index(),
+        remote_delay_secs: s.get_remote_delay_secs(),
+        remote_force: s.get_remote_force(),
+        remote_restart_timeout_secs: s.get_remote_restart_timeout_secs(),
+        remote_shutdown_timeout_secs: s.get_remote_shutdown_timeout_secs(),
+        remote_connect_timeout_secs: s.get_remote_connect_timeout_secs(),
+        remote_auto_boot_time: s.get_remote_auto_boot_time(),
     }
 }
 
@@ -349,6 +415,24 @@ pub fn push_view(ui: &AppWindow, v: &SettingsView, pending: &Debouncer) {
     }
     if set("gui.renderer") {
         s.set_renderer_index(v.renderer_index);
+    }
+    if set("remote.shutdown_delay_secs") {
+        s.set_remote_delay_secs(v.remote_delay_secs);
+    }
+    if set("remote.force_apps_closed") {
+        s.set_remote_force(v.remote_force);
+    }
+    if set("remote.restart_verify_timeout_secs") {
+        s.set_remote_restart_timeout_secs(v.remote_restart_timeout_secs);
+    }
+    if set("remote.shutdown_verify_timeout_secs") {
+        s.set_remote_shutdown_timeout_secs(v.remote_shutdown_timeout_secs);
+    }
+    if set("remote.connect_timeout_ms") {
+        s.set_remote_connect_timeout_secs(v.remote_connect_timeout_secs);
+    }
+    if set("remote.auto_boot_time") {
+        s.set_remote_auto_boot_time(v.remote_auto_boot_time);
     }
 }
 
@@ -493,6 +577,9 @@ impl App {
                 "gui.theme" => self.apply_theme(s.gui.theme),
                 "gui.show_tray" => self.set_tray_shown(s.gui.show_tray),
                 "gui.renderer" => log::info!("renderer change takes effect after a restart"),
+                "remote.auto_boot_time" if s.remote.auto_boot_time => {
+                    self.auto_boot_online_hosts();
+                }
                 _ => {}
             }
         }
@@ -891,6 +978,61 @@ mod tests {
         assert_eq!(value_for("wake.port", &v).unwrap(), "65535");
         let (_, next) = apply("wake.repeat", &v, &s).unwrap().unwrap();
         assert_eq!(next.wake.repeat, 10);
+    }
+
+    #[test]
+    fn remote_keys_ranges_and_units() {
+        let s = Settings::default();
+        let v = view_of(&s);
+        assert_eq!(v.remote_delay_secs, 30);
+        assert!(v.remote_force && v.remote_auto_boot_time);
+        assert_eq!(v.remote_restart_timeout_secs, 600);
+        assert_eq!(v.remote_shutdown_timeout_secs, 300);
+        assert_eq!(v.remote_connect_timeout_secs, 5, "seconds in the UI");
+        for key in [
+            "remote.shutdown_delay_secs",
+            "remote.restart_verify_timeout_secs",
+            "remote.shutdown_verify_timeout_secs",
+            "remote.connect_timeout_ms",
+        ] {
+            assert!(is_debounced(key), "{key}");
+        }
+        assert!(!is_debounced("remote.auto_boot_time"));
+        assert!(!is_debounced("remote.force_apps_closed"));
+
+        let mut w = v.clone();
+        w.remote_delay_secs = 9999;
+        w.remote_restart_timeout_secs = 5;
+        w.remote_shutdown_timeout_secs = 99_999;
+        w.remote_connect_timeout_secs = 12;
+        w.remote_force = false;
+        w.remote_auto_boot_time = false;
+        assert_eq!(value_for("remote.shutdown_delay_secs", &w).unwrap(), "600");
+        assert_eq!(
+            value_for("remote.restart_verify_timeout_secs", &w).unwrap(),
+            "30"
+        );
+        assert_eq!(
+            value_for("remote.shutdown_verify_timeout_secs", &w).unwrap(),
+            "3600"
+        );
+        assert_eq!(value_for("remote.connect_timeout_ms", &w).unwrap(), "12000");
+        let (_, next) = apply("remote.connect_timeout_ms", &w, &s).unwrap().unwrap();
+        assert_eq!(next.remote.connect_timeout_ms, 12_000);
+        let (_, next) = apply("remote.force_apps_closed", &w, &s).unwrap().unwrap();
+        assert!(!next.remote.force_apps_closed);
+        let (_, next) = apply("remote.auto_boot_time", &w, &s).unwrap().unwrap();
+        assert!(!next.remote.auto_boot_time);
+        w.remote_connect_timeout_secs = 0;
+        assert_eq!(value_for("remote.connect_timeout_ms", &w).unwrap(), "1000");
+        w.remote_connect_timeout_secs = 61;
+        assert_eq!(value_for("remote.connect_timeout_ms", &w).unwrap(), "60000");
+        // Shown as round(ms / 1000), at least 1.
+        assert_eq!(connect_timeout_secs(1000), 1);
+        assert_eq!(connect_timeout_secs(1499), 1);
+        assert_eq!(connect_timeout_secs(1500), 2);
+        assert_eq!(connect_timeout_secs(0), 1);
+        assert_eq!(connect_timeout_secs(60_000), 60);
     }
 
     #[test]

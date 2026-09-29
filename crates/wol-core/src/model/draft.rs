@@ -10,7 +10,13 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-use super::{Config, Host, HostId, NAME_MAX_CHARS, ProbeMethod};
+use super::remote::{
+    check_host_key, check_management_address, check_power_command, check_remote_user,
+    check_ssh_port, clean_key_file,
+};
+use super::{
+    Config, Host, HostId, NAME_MAX_CHARS, ProbeMethod, RemoteConfig, RemoteKind, SudoMode,
+};
 use crate::addr::{self, HostAddr};
 use crate::error::{Field, FieldError, FieldIssue};
 use crate::mac::{self, MacAddr, SecureOn};
@@ -43,6 +49,158 @@ pub struct HostDraft {
     pub probe: Option<ProbeMethod>,
     /// TCP ports override, comma separated (empty = settings default).
     pub tcp_ports: String,
+    /// Remote management (v0.2.0). Merged field by field like the others.
+    pub remote: RemoteDraft,
+}
+
+/// Editable text form of a [`RemoteConfig`] (the editor's "Remote management" section,
+/// `wolm remote set`). Secrets are not part of it (they go to [`crate::secret`]).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+pub struct RemoteDraft {
+    /// `None` = not managed (saving removes `[hosts.remote]`).
+    pub kind: Option<RemoteKind>,
+    /// User name (empty = Windows: current sign-in / stored account; SSH: `root`).
+    pub user: String,
+    /// Management address (empty = the host's address).
+    pub address: String,
+    /// SSH port (empty = 22).
+    pub port: String,
+    /// SSH private key file (empty = password authentication).
+    pub key_file: String,
+    /// Pinned SSH host key line (empty = not trusted yet; the editor's "forget" sets `""`,
+    /// "trust" during a connection test sets the received line).
+    pub host_key: String,
+    /// SSH sudo mode.
+    pub sudo: SudoMode,
+    /// SSH reboot command override (empty = platform default).
+    pub reboot_command: String,
+    /// SSH power-off command override (empty = platform default).
+    pub shutdown_command: String,
+}
+
+impl RemoteDraft {
+    /// Text form of a host's remote table (`None` → not managed, everything empty).
+    pub fn from_config(r: Option<&RemoteConfig>) -> RemoteDraft {
+        let Some(r) = r else {
+            return RemoteDraft::default();
+        };
+        RemoteDraft {
+            kind: Some(r.kind),
+            user: r.user.clone().unwrap_or_default(),
+            address: r
+                .address
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_default(),
+            port: r.port.map(|p| p.to_string()).unwrap_or_default(),
+            key_file: r
+                .key_file
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            host_key: r.host_key.clone().unwrap_or_default(),
+            sudo: r.sudo,
+            reboot_command: r.reboot_command.clone().unwrap_or_default(),
+            shutdown_command: r.shutdown_command.clone().unwrap_or_default(),
+        }
+    }
+
+    /// Validates every field on its own (as for a new host) and returns the table, `Ok(None)`
+    /// when `kind` is `None`. Errors in field order.
+    pub fn build(&self) -> Result<Option<RemoteConfig>, Vec<FieldError>> {
+        let mut h = Host::default();
+        let mut errs = Vec::new();
+        apply_remote(self, &RemoteDraft::default(), &mut h, &mut |f, i| {
+            errs.push(FieldError::new(f, i))
+        });
+        if errs.is_empty() {
+            Ok(h.remote)
+        } else {
+            Err(errs)
+        }
+    }
+}
+
+fn non_empty(s: String) -> Option<String> {
+    (!s.is_empty()).then_some(s)
+}
+
+/// Three-way merge of the remote section (see [`HostDraft::build`]): nothing happens when the
+/// user left the section untouched. Otherwise the resulting kind is the draft's when the user
+/// changed it (or when the host has no table any more), else the stored one; `None` removes
+/// the table. On an existing table only fields whose text changed are applied; a new table
+/// gets every field of the draft. The user name is re-checked when the kind changes.
+fn apply_remote(
+    d: &RemoteDraft,
+    base: &RemoteDraft,
+    h: &mut Host,
+    err: &mut dyn FnMut(Field, FieldIssue),
+) {
+    if d == base {
+        return;
+    }
+    let kind = match &h.remote {
+        Some(r) if d.kind == base.kind => Some(r.kind),
+        _ => d.kind,
+    };
+    let Some(kind) = kind else {
+        h.remote = None;
+        return;
+    };
+    let fresh = h.remote.is_none();
+    let mut r = h.remote.take().unwrap_or_else(|| RemoteConfig::new(kind));
+    let kind_changed = r.kind != kind;
+    r.kind = kind;
+    let changed = |a: &str, b: &str| fresh || a != b;
+
+    if changed(&d.user, &base.user) || kind_changed {
+        let text = if changed(&d.user, &base.user) {
+            d.user.clone()
+        } else {
+            r.user.clone().unwrap_or_default()
+        };
+        match check_remote_user(&text, kind) {
+            Ok(u) => r.user = non_empty(u),
+            Err(i) => err(Field::RemoteUser, i),
+        }
+    }
+    if changed(&d.address, &base.address) {
+        match check_management_address(&d.address) {
+            Ok(a) => r.address = a,
+            Err(i) => err(Field::RemoteAddress, i),
+        }
+    }
+    if changed(&d.port, &base.port) {
+        match check_ssh_port(&d.port) {
+            Ok(p) => r.port = p,
+            Err(i) => err(Field::SshPort, i),
+        }
+    }
+    if changed(&d.key_file, &base.key_file) {
+        r.key_file = non_empty(clean_key_file(&d.key_file)).map(Into::into);
+    }
+    if changed(&d.host_key, &base.host_key) {
+        match check_host_key(&d.host_key) {
+            Ok(k) => r.host_key = non_empty(k),
+            Err(i) => err(Field::SshHostKey, i),
+        }
+    }
+    if fresh || d.sudo != base.sudo {
+        r.sudo = d.sudo;
+    }
+    if changed(&d.reboot_command, &base.reboot_command) {
+        match check_power_command(&d.reboot_command) {
+            Ok(c) => r.reboot_command = non_empty(c),
+            Err(i) => err(Field::RebootCommand, i),
+        }
+    }
+    if changed(&d.shutdown_command, &base.shutdown_command) {
+        match check_power_command(&d.shutdown_command) {
+            Ok(c) => r.shutdown_command = non_empty(c),
+            Err(i) => err(Field::ShutdownCommand, i),
+        }
+    }
+    h.remote = Some(r);
 }
 
 impl Default for HostDraft {
@@ -101,6 +259,7 @@ impl HostDraft {
             interfaces: h.interfaces.clone(),
             probe: h.probe,
             tcp_ports: addr::format_port_list(&h.tcp_ports),
+            remote: RemoteDraft::from_config(h.remote.as_ref()),
         }
     }
 
@@ -244,6 +403,8 @@ impl HostDraft {
             }
         }
 
+        apply_remote(&self.remote, &base.remote, &mut h, &mut err);
+
         if errs.is_empty() { Ok(h) } else { Err(errs) }
     }
 }
@@ -284,6 +445,27 @@ pub fn check_field(field: Field, input: &str) -> Result<(), FieldIssue> {
         Field::SecureOn => optional(input, SecureOn::parse).map(|_| ()),
         Field::Targets => addr::parse_target_list(input).map(|_| ()),
         Field::TcpPorts => addr::parse_port_list(input).map(|_| ()),
-        Field::Group | Field::Notes | Field::Interfaces | Field::Probe => Ok(()),
+        // Kind-independent checks; see `check_remote_field` for the user name rules per kind.
+        Field::RemoteUser => check_remote_user(input, RemoteKind::Windows).map(|_| ()),
+        Field::RemoteAddress => check_management_address(input).map(|_| ()),
+        Field::SshPort => check_ssh_port(input).map(|_| ()),
+        Field::SshHostKey => check_host_key(input).map(|_| ()),
+        Field::RebootCommand | Field::ShutdownCommand => check_power_command(input).map(|_| ()),
+        Field::Group
+        | Field::Notes
+        | Field::Interfaces
+        | Field::Probe
+        | Field::RemoteKind
+        | Field::SshKeyFile
+        | Field::SshSudo => Ok(()),
+    }
+}
+
+/// Like [`check_field`] for the remote section, with the rules of `kind` (GUI
+/// `Validator.check-remote-user(text, kind)`: Windows and SSH user names differ).
+pub fn check_remote_field(field: Field, kind: RemoteKind, input: &str) -> Result<(), FieldIssue> {
+    match field {
+        Field::RemoteUser => check_remote_user(input, kind).map(|_| ()),
+        other => check_field(other, input),
     }
 }

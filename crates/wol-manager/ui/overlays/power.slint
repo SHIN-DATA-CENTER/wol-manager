@@ -1,0 +1,192 @@
+// v0.2: confirm dialog for restarting / shutting down a host (top layer, like the confirm
+// dialog). Rust fills AppState.power and sets power-open; the UI edits the Windows options in
+// AppState.power and returns the request through power-accepted / power-cancelled.
+//
+// The safe choice (Cancel) has the initial focus; Enter in the message field does not accept.
+
+import { Button, CheckBox, LineEdit, SpinBox, ScrollView } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { PowerAction, PowerRequest, RemoteKind, ToastKind } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { AppState, Texts } from "../state.slint";
+import { Field, HintText, Icon, InfoBar, DangerButton, WrapBox } from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+export component PowerOverlay inherits ModalFrame {
+    property <PowerRequest> req: AppState.power;
+    property <bool> restart: root.req.action == PowerAction.restart;
+    property <bool> windows: root.req.kind == RemoteKind.windows;
+
+    title: root.restart ? @tr("Restart host?") : @tr("Shut down host?");
+    title-icon: root.restart ? CoolIcons.restart : CoolIcons.shutdown;
+    card-width: 520px;
+    show-close-button: false;
+    top-layer: true;
+
+    function accept() {
+        let r = AppState.power;
+        AppState.power-open = false;
+        AppState.power-accepted(r);
+    }
+
+    function cancel() {
+        let r = AppState.power;
+        AppState.power-open = false;
+        AppState.power-cancelled(r);
+    }
+
+    close-requested => { root.cancel(); }
+    init => { cancel-button.focus(); }
+
+    ScrollView {
+        vertical-stretch: 1;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        // The fluent ScrollView does not forward its content size; the card sizes to it.
+        preferred-height: content.preferred-height;
+
+        content := VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 4px;
+            padding-bottom: 20px;
+            spacing: 14px;
+            alignment: start;
+
+            // Which host (name, management address, kind).
+            Rectangle {
+                background: Theme.subtle-fill;
+                border-radius: Theme.radius;
+                border-width: 1px;
+                border-color: Theme.card-border;
+                HorizontalLayout {
+                    padding: 12px;
+                    spacing: 12px;
+                    Icon {
+                        source: root.windows ? CoolIcons.os-windows : CoolIcons.os-ssh;
+                        size: 22px;
+                        tint: Theme.text-secondary;
+                        cross-axis-self-alignment: center;
+                    }
+                    // Wrapped, never elided: the user must see exactly which host goes down.
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        alignment: center;
+                        Text {
+                            text: root.req.host-name;
+                            font-weight: 600;
+                            color: Theme.text;
+                            wrap: word-wrap;
+                        }
+                        Text {
+                            text: root.req.address != "" ? root.req.address + "  ·  " + Texts.remote-kind(root.req.kind) : Texts.remote-kind(root.req.kind);
+                            font-size: Theme.font-small;
+                            color: Theme.text-secondary;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            InfoBar {
+                severity: ToastKind.warning;
+                title: @tr("Anyone using this host may lose unsaved work.");
+                message: root.restart ? "" : @tr("To start it again later, use Wake. Wake-on-LAN must be enabled on the host.");
+                closable: false;
+            }
+
+            // Windows: countdown, force-close, message.
+            if root.windows : WrapBox {
+                spacing: 14px;
+                delay-field := Field {
+                    label: @tr("Delay");
+                    hint: @tr("0 = immediately. During the countdown Windows shows a notice on the host, and “Cancel shutdown” can still stop it.");
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+                        SpinBox {
+                            width: 120px;
+                            accessible-label: delay-field.label;
+                            minimum: 0;
+                            maximum: 600;
+                            step-size: 10;
+                            value: AppState.power.delay-secs;
+                            edited(v) => { AppState.power.delay-secs = v; }
+                        }
+                        Text {
+                            text: @tr("seconds");
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    CheckBox {
+                        text: @tr("Force apps to close");
+                        checked: AppState.power.force;
+                        toggled => { AppState.power.force = self.checked; }
+                    }
+                    HintText {
+                        text: @tr("Apps with unsaved work are closed without asking. If this is off, such apps can stop Windows from shutting down.");
+                    }
+                }
+                message-field := Field {
+                    label: @tr("Message on the host");
+                    hint: AppState.power.delay-secs > 0 ? "" : @tr("Shown only during a countdown (delay above 0).");
+                    LineEdit {
+                        accessible-label: message-field.label;
+                        enabled: AppState.power.delay-secs > 0;
+                        text: AppState.power.message;
+                        placeholder-text: @tr("Optional");
+                        edited(t) => { AppState.power.message = t; }
+                    }
+                }
+            }
+
+            // SSH: the host's own command (it runs as root instead of the platform default, and
+            // may come from an imported file): always shown before it runs.
+            if !root.windows && root.req.command != "" : InfoBar {
+                severity: ToastKind.warning;
+                title: root.restart ? @tr("This host uses its own restart command") : @tr("This host uses its own shutdown command");
+                message: @tr("Instead of the platform's default, this command from the host's settings runs with root rights. Continue only if you know it:");
+                detail: root.req.command;
+                closable: false;
+            }
+
+            // SSH: runs with root rights; what to expect.
+            if !root.windows : WrapBox {
+                HorizontalLayout {
+                    spacing: 8px;
+                    Icon {
+                        source: CoolIcons.info;
+                        size: 14px;
+                        tint: Theme.info-fg;
+                        cross-axis-self-alignment: start;
+                    }
+                    HintText {
+                        horizontal-stretch: 1;
+                        text: root.restart
+                            ? @tr("The command runs with root rights (with sudo if needed). It can take a few minutes until the host answers again.")
+                            : @tr("The command runs with root rights (with sudo if needed). The host stops answering shortly afterwards.");
+                    }
+                }
+            }
+        }
+    }
+
+    ModalFooter {
+        Rectangle { horizontal-stretch: 1; }
+        DangerButton {
+            text: root.restart ? @tr("Restart") : @tr("Shut down");
+            icon: root.restart ? CoolIcons.restart : CoolIcons.shutdown;
+            min-width: 110px;
+            clicked => { root.accept(); }
+        }
+        cancel-button := Button {
+            text: @tr("Cancel");
+            min-width: 96px;
+            clicked => { root.cancel(); }
+        }
+    }
+}

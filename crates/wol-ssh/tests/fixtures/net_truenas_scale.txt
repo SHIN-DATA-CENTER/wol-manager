@@ -1,0 +1,15 @@
+WOLM1 hdr os=Linux uid=950
+WOLM1 route br0 0
+WOLM1 if br0 mac=3c:ec:ef:00:10:01 type=1 kind=bridge aat=3 oper=up carrier=1 lower=enp4s0,vnet0 perm=- wol=-
+WOLM1 if enp4s0 mac=3c:ec:ef:00:10:01 type=1 kind=phys aat=0 oper=up carrier=1 lower=- perm=3c:ec:ef:00:10:01 wol=-
+WOLM1 if enp5s0 mac=3c:ec:ef:00:10:02 type=1 kind=phys aat=0 oper=down carrier= lower=- perm=3c:ec:ef:00:10:02 wol=-
+WOLM1 if kube-bridge mac=e2:6b:3a:00:00:01 type=1 kind=bridge aat=3 oper=up carrier=1 lower=veth1a2b3c4d perm=- wol=-
+WOLM1 if lo mac=00:00:00:00:00:00 type=772 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if veth1a2b3c4d mac=a6:1b:2c:3d:4e:5f type=1 kind=virtual aat=3 oper=up carrier=1 lower=- perm=- wol=-
+WOLM1 if vnet0 mac=fe:54:00:aa:bb:cc type=1 kind=virtual aat=3 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 if wt0 mac=- type=65534 kind=virtual aat=0 oper=unknown carrier=1 lower=- perm=- wol=-
+WOLM1 inet lo 127.0.0.1/8
+WOLM1 inet br0 192.168.1.40/24
+WOLM1 inet kube-bridge 172.16.0.1/16
+WOLM1 inet wt0 100.105.50.1/16
+WOLM1 end

@@ -1,0 +1,16 @@
+WOLM1 hdr os=FreeBSD uid=0
+WOLM1 route bridge0 0
+WOLM1 if em0 mac=00:11:22:33:44:55 type=- kind=phys aat=- oper=active carrier=- lower=- perm=- wol=g/d
+WOLM1 if igb0 mac=00:11:22:33:44:66 type=- kind=phys aat=- oper=active carrier=- lower=- perm=00:11:22:33:44:77 wol=g/g
+WOLM1 if igb1 mac=00:11:22:33:44:66 type=- kind=phys aat=- oper=no_carrier carrier=- lower=- perm=00:11:22:33:44:88 wol=-
+WOLM1 inet lo0 127.0.0.1/0xff000000
+WOLM1 if lo0 mac=- type=- kind=virtual aat=- oper=- carrier=- lower=- perm=- wol=-
+WOLM1 inet bridge0 192.168.1.20/0xffffff00
+WOLM1 if bridge0 mac=58:9c:fc:10:ff:e1 type=- kind=virtual aat=- oper=- carrier=- lower=epair0a,lagg0 perm=- wol=-
+WOLM1 if lagg0 mac=00:11:22:33:44:66 type=- kind=virtual aat=- oper=- carrier=- lower=igb0,igb1 perm=- wol=-
+WOLM1 inet vlan10 10.0.10.2/0xffffff00
+WOLM1 if vlan10 mac=00:11:22:33:44:55 type=- kind=virtual aat=- oper=- carrier=- lower=em0 perm=- wol=-
+WOLM1 inet wg0 100.105.1.2/0xffff0000
+WOLM1 if wg0 mac=- type=- kind=virtual aat=- oper=- carrier=- lower=- perm=- wol=-
+WOLM1 if epair0a mac=02:4b:9c:77:5d:0a type=- kind=virtual aat=- oper=- carrier=- lower=- perm=- wol=-
+WOLM1 end

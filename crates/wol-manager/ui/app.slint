@@ -5,20 +5,24 @@
 
 import { Palette } from "std-widgets.slint";
 import { AppArt } from "@coolicons";
-import { OverlayKind } from "types.slint";
+import { OverlayKind, HostRow, RemoteKind } from "types.slint";
 import { Theme } from "theme.slint";
-import { AppState, SettingsState, AboutInfo } from "state.slint";
+import { AppState, EditorState, SettingsState, AboutInfo, ModalGate, RemoteRules } from "state.slint";
 import { MainView } from "main-view.slint";
 import { ToastStack } from "toasts.slint";
 import { HostEditorOverlay } from "overlays/host-editor.slint";
 import { SettingsOverlay } from "overlays/settings.slint";
 import { AboutOverlay } from "overlays/about.slint";
 import { ConfirmOverlay } from "overlays/confirm.slint";
+import { PowerOverlay } from "overlays/power.slint";
+import { HostKeyOverlay } from "overlays/hostkey.slint";
+import { MacPickerOverlay } from "overlays/mac-picker.slint";
 
 export {
     HostStatus, ProbeVia, HostRow, TrayHost, ToastKind, Toast, NoticeKind, Notice, OverlayKind,
     ConfirmKind, ConfirmRequest, EditorMode, FieldIssue, ArpStatus, InterfaceOption, StorageMode,
-    PortableBlock, PathMode, PathState,
+    PortableBlock, PathMode, PathState, RemoteKind, MacKind, MacCandidateRow, HostKeyPrompt,
+    PowerAction, PowerRequest, SudoMode, TestStatus,
 } from "types.slint";
 export { AppState, EditorState, Validator, SettingsState, AboutInfo } from "state.slint";
 export { AppTray } from "tray.slint";
@@ -34,12 +38,14 @@ export component AppWindow inherits Window {
     default-font-size: 14px;
     background: Theme.window;
 
-    property <bool> idle: AppState.overlay == OverlayKind.none && !AppState.confirm-open;
+    property <bool> idle: AppState.overlay == OverlayKind.none && !ModalGate.top-open;
     property <bool> has-selection: AppState.selected-id != "";
-    property <bool> selection-has-address: AppState.selected-row >= 0
+    /// The selected row (valid only while `selection-valid`).
+    property <HostRow> sel-host: AppState.hosts[AppState.selected-row];
+    property <bool> selection-valid: AppState.selected-row >= 0
         && AppState.selected-row < AppState.hosts.length
-        && AppState.hosts[AppState.selected-row].id == AppState.selected-id
-        && AppState.hosts[AppState.selected-row].address != "";
+        && root.sel-host.id == AppState.selected-id;
+    property <bool> selection-has-address: root.selection-valid && root.sel-host.address != "";
 
     /// Force a colour scheme. Call ONLY for an explicit light/dark choice (or, after switching
     /// back to "system" at runtime, with the current OS value): assigning Palette.color-scheme
@@ -137,6 +143,33 @@ export component AppWindow inherits Window {
                 activated => { AppState.delete-host(AppState.selected-id); }
             }
             MenuSeparator { }
+            // v0.2 remote management (see the row menu in main-view.slint).
+            MenuItem {
+                title: @tr("Restart…");
+                enabled: root.idle && root.selection-valid && RemoteRules.can-power(root.sel-host);
+                activated => { AppState.restart-host(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Shut down…");
+                enabled: root.idle && root.selection-valid && RemoteRules.can-power(root.sel-host);
+                activated => { AppState.shutdown-host(AppState.selected-id); }
+            }
+            if root.selection-valid && root.sel-host.remote-kind == RemoteKind.windows : MenuItem {
+                title: @tr("Cancel shutdown");
+                enabled: root.idle && RemoteRules.can-abort(root.sel-host);
+                activated => { AppState.abort-shutdown(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Get boot time");
+                enabled: root.idle && root.selection-valid && RemoteRules.can-power(root.sel-host);
+                activated => { AppState.fetch-boot-time(AppState.selected-id); }
+            }
+            if root.selection-valid && !root.sel-host.managed : MenuItem {
+                title: @tr("Set up remote management…");
+                enabled: root.idle;
+                activated => { AppState.setup-remote(AppState.selected-id); }
+            }
+            MenuSeparator { }
             MenuItem {
                 title: @tr("Wake all visible…");
                 shortcut: @keys(Control + Shift + Return);
@@ -186,7 +219,7 @@ export component AppWindow inherits Window {
                 title: @tr("Command line (wolm)…");
                 enabled: root.idle;
                 activated => {
-                    SettingsState.page = 2;
+                    SettingsState.page = 3;
                     AppState.open-settings();
                 }
             }
@@ -218,6 +251,19 @@ export component AppWindow inherits Window {
         height: 100%;
     }
     if AppState.overlay == OverlayKind.about : AboutOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    // v0.2 top-layer dialogs (at most one of them, or the confirm dialog, is open).
+    if AppState.overlay == OverlayKind.editor && EditorState.mac-picker-open : MacPickerOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    if AppState.power-open : PowerOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    if AppState.hostkey-open : HostKeyOverlay {
         width: 100%;
         height: 100%;
     }

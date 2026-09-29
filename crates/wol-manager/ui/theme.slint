@@ -16,6 +16,17 @@ export global Theme {
     out property <color> status-checking: #60A5FA;
     out property <color> status-offline: #9CA3AF;
     out property <color> status-ring: dark ? #8B8B8B : #9CA3AF;
+    // v0.2: restarting = amber like waking (the host comes back), shutting down = slate (it goes
+    // offline); both pulse.
+    out property <color> status-restarting: #F59E0B;
+    out property <color> status-shutting-down: dark ? #94A3B8 : #64748B;
+
+    // Destructive button (power confirm): Windows error red, white text. White on every state
+    // is at least 4.5:1 (#C42B1C 5.7, #D13438 4.9, #B02718 6.7, #A52313 7.4, #9C2215 7.9).
+    out property <color> danger: #C42B1C;
+    out property <color> danger-hover: dark ? #D13438 : #B02718;
+    out property <color> danger-pressed: dark ? #A52313 : #9C2215;
+    out property <color> danger-text: #FFFFFF;
 
     // Text
     out property <brush> text: Palette.foreground;

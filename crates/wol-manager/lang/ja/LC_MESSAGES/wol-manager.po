@@ -49,6 +49,21 @@ msgstr "アドレスをコピー"
 msgid "Delete…"
 msgstr "削除…"
 
+msgid "Restart…"
+msgstr "再起動…"
+
+msgid "Shut down…"
+msgstr "シャットダウン…"
+
+msgid "Cancel shutdown"
+msgstr "シャットダウンを取り消す"
+
+msgid "Get boot time"
+msgstr "起動時刻を取得"
+
+msgid "Set up remote management…"
+msgstr "リモート管理を設定…"
+
 msgid "Wake all visible…"
 msgstr "表示中のホストをすべて起動…"
 
@@ -79,6 +94,9 @@ msgstr "Web サイト"
 msgid "About WoL Manager"
 msgstr "WoL Manager について"
 
+msgid "Remote management: {0}"
+msgstr "リモート管理: {0}"
+
 msgid "Status"
 msgstr "状態"
 
@@ -90,6 +108,12 @@ msgstr "MAC アドレス"
 
 msgid "Address"
 msgstr "アドレス"
+
+msgid "{0} (approx.)"
+msgstr "{0} (概算)"
+
+msgid "Remote operation running"
+msgstr "リモート操作を実行中"
 
 msgid "Wake {0}"
 msgstr "{0} を起動"
@@ -189,144 +213,11 @@ msgstr "ホストを検索 (Ctrl+F)"
 msgid "Settings (Ctrl+,)"
 msgstr "設定 (Ctrl+,)"
 
-msgid "Ping (ICMP)"
-msgstr "Ping (ICMP)"
-
-msgid "TCP port"
-msgstr "TCP ポート"
-
-msgid "Don't check"
-msgstr "確認しない"
-
-msgid "Automatic (ping, then TCP)"
-msgstr "自動 (Ping の後に TCP)"
-
-msgid "Checking…"
-msgstr "確認中…"
-
-msgid "Online"
-msgstr "オンライン"
-
-msgid "Offline"
-msgstr "オフライン"
-
-msgid "Waking…"
-msgstr "起動中…"
-
-msgid "No response"
-msgstr "応答なし"
-
-msgid "Not monitored"
-msgstr "監視なし"
-
-msgid "Unknown"
-msgstr "未確認"
-
-msgid "Answered ping in {0} ms"
-msgstr "Ping に {0} ms で応答しました"
-
-msgid "Answered ping"
-msgstr "Ping に応答しました"
-
-msgid "Answered on a TCP port in {0} ms"
-msgstr "TCP ポートに {0} ms で応答しました"
-
-msgid "Answered on a TCP port"
-msgstr "TCP ポートに応答しました"
-
-msgid "The host answered the last check."
-msgstr "前回の確認で応答がありました。"
-
-msgid "The host did not answer the last check."
-msgstr "前回の確認で応答がありませんでした。"
-
-msgid "Magic packet sent. Waiting for the host to answer…"
-msgstr "マジック パケットを送信しました。応答を待っています…"
-
-msgid "The host did not answer after the magic packet was sent."
-msgstr "マジック パケットの送信後、応答がありませんでした。"
-
-msgid "Checking whether the host answers…"
-msgstr "応答があるか確認しています…"
-
-msgid "No address is set, so the status can't be checked."
-msgstr "アドレスが設定されていないため、状態を確認できません。"
-
-msgid "Status checks are turned off for this host."
-msgstr "このホストの状態確認はオフになっています。"
-
-msgid "Not checked yet."
-msgstr "まだ確認していません。"
-
-msgid "Required."
-msgstr "必須です。"
-
-msgid "Enter a MAC address such as AA:BB:CC:DD:EE:FF."
-msgstr "AA:BB:CC:DD:EE:FF のような形式で MAC アドレスを入力してください。"
-
-msgid ""
-"Multicast, broadcast and all-zero addresses can't be woken. The first byte "
-"must be even."
-msgstr ""
-"マルチキャスト、ブロードキャスト、すべて 0 のアドレスは起動の対象にできません。"
-"1 バイト目は偶数にしてください。"
-
-msgid "Enter an IPv4 address or a host name."
-msgstr "IPv4 アドレスまたはホスト名を入力してください。"
-
-msgid "Enter a port number from 1 to 65535."
-msgstr "1 ～ 65535 のポート番号を入力してください。"
-
-msgid "Enter port numbers from 1 to 65535, separated by commas."
-msgstr "1 ～ 65535 のポート番号をカンマ区切りで入力してください。"
-
-msgid "Enter up to 16 ports."
-msgstr "ポートは 16 個までにしてください。"
-
-msgid "Enter 6 bytes in hex, such as 01:23:45:67:89:AB."
-msgstr "01:23:45:67:89:AB のような 6 バイトの 16 進数を入力してください。"
-
-msgid "Enter one target per line as host or host:port."
-msgstr "送信先は 1 行に 1 つずつ、ホストまたはホスト:ポートの形式で入力してください。"
-
-msgid "A host with this name already exists."
-msgstr "この名前のホストは既に存在します。"
-
-msgid "The name can't be a MAC address."
-msgstr "MAC アドレスを名前にすることはできません。"
-
-msgid "Use 64 characters or fewer."
-msgstr "64 文字以内で入力してください。"
-
-msgid "Contains kana. Turn off the IME and type it again."
-msgstr "かなが含まれています。IME をオフにして入力し直してください。"
+msgid "Version {0}"
+msgstr "バージョン {0}"
 
 msgid "Portable"
 msgstr "ポータブル"
-
-msgid "Custom location"
-msgstr "カスタムの場所"
-
-msgid "Standard (AppData)"
-msgstr "標準 (AppData)"
-
-msgid "Dismiss"
-msgstr "閉じる"
-
-msgid "Show WoL Manager"
-msgstr "WoL Manager を表示"
-
-msgid "Wake host"
-msgstr "ホストを起動"
-
-msgid "{0} (online)"
-msgstr "{0} (オンライン)"
-
-msgid "Close"
-msgstr "閉じる"
-
-msgid "Version {0}"
-msgstr "バージョン {0}"
 
 msgid "Wake-on-LAN for Windows, with a command line tool (wolm)."
 msgstr "Windows 用の Wake-on-LAN ツール (コマンドライン版 wolm 付き)"
@@ -364,6 +255,9 @@ msgstr "アイコンは WoL Manager の Apache License 2.0 の対象外です。
 msgid "Third-party licenses"
 msgstr "サードパーティのライセンス"
 
+msgid "Close"
+msgstr "閉じる"
+
 msgid "Delete host?"
 msgstr "ホストを削除しますか?"
 
@@ -378,6 +272,9 @@ msgstr "ポータブル モードをオフにしますか?"
 
 msgid "Replace the existing data folder?"
 msgstr "既存の data フォルダーを置き換えますか?"
+
+msgid "Forget the trusted host key?"
+msgstr "ホスト鍵の信頼を解除しますか?"
 
 msgid "Save as a new host?"
 msgstr "新しいホストとして保存しますか?"
@@ -398,6 +295,9 @@ msgstr "設定は再び AppData に保存されます。wol-manager.exe と同�
 msgid "A data folder with settings already exists here. Replace it with the current settings, or keep using the existing settings?"
 msgstr "この場所には設定の入った data フォルダーが既にあります。現在の設定で置き換えますか? それとも既存の設定をそのまま使いますか?"
 
+msgid "The next time WoL Manager connects to “{0}”, it will ask you to check the host key again. Do this only if you know why the key changed, for example because the host was reinstalled."
+msgstr "次に「{0}」に接続するときに、ホスト鍵をもう一度確認するよう求められます。ホストの再インストールなど、鍵が変わった理由がわかっている場合にのみ実行してください。"
+
 msgid "“{0}” was deleted by another program while you were editing it. Save it as a new host?"
 msgstr "編集中に「{0}」が別のプログラムによって削除されました。新しいホストとして保存しますか?"
 
@@ -413,6 +313,9 @@ msgstr "オフにする"
 msgid "Replace"
 msgstr "置き換える"
 
+msgid "Forget"
+msgstr "信頼を解除"
+
 msgid "Save as new"
 msgstr "新規として保存"
 
@@ -427,6 +330,21 @@ msgstr "既存の設定を使う"
 
 msgid "Cancel"
 msgstr "キャンセル"
+
+msgid "The saved value is deleted when you save the host. Choose Undo to keep it."
+msgstr "保存済みの値はホストの保存時に削除されます。残す場合は「元に戻す」を選んでください。"
+
+msgid "Saved. Leave the field empty to keep it, or type a new one to replace it."
+msgstr "保存済みです。変更しない場合は空欄のままにし、変更する場合は新しい値を入力してください。"
+
+msgid "Deleted on save"
+msgstr "保存時に削除されます"
+
+msgid "Saved"
+msgstr "保存済み"
+
+msgid "Undo"
+msgstr "元に戻す"
 
 msgid "Keep current pinning ({n} adapter)"
 msgid_plural "Keep current pinning ({n} adapters)"
@@ -459,6 +377,12 @@ msgstr "「IP から取得」は、この PC と同じサブネット内のア�
 msgid "The MAC address could not be looked up."
 msgstr "MAC アドレスを取得できませんでした。"
 
+msgid "The MAC address can't be looked up with ARP"
+msgstr "ARP では MAC アドレスを取得できません"
+
+msgid "Set up remote management"
+msgstr "リモート管理を設定"
+
 msgid "IPv4 address or host name. Used for status checks and “Get from IP”."
 msgstr "IPv4 アドレスまたはホスト名。状態の確認と「IP から取得」に使用します。"
 
@@ -477,6 +401,162 @@ msgstr "メモ"
 msgid "Optional"
 msgstr "任意"
 
+msgid "Remote management"
+msgstr "リモート管理"
+
+msgid "Restart, shut down and boot time over Windows remote management or SSH"
+msgstr "Windows のリモート管理または SSH による再起動、シャットダウン、起動時刻の取得"
+
+msgid "Type"
+msgstr "種類"
+
+msgid "Windows"
+msgstr "Windows"
+
+msgid "Linux (SSH)"
+msgstr "Linux (SSH)"
+
+msgid "Management address"
+msgstr "管理用アドレス"
+
+msgid "Same as Address"
+msgstr "アドレスと同じ"
+
+msgid "With remote management, WoL Manager can restart and shut down this host, show when it was started, and find its MAC address even over a VPN."
+msgstr "リモート管理を設定すると、このホストの再起動とシャットダウン、起動時刻の表示、VPN 経由での MAC アドレスの取得ができるようになります。"
+
+msgid "When you save, the remote management settings of this host are removed, including its saved passwords and its trusted host key."
+msgstr "保存すると、このホストのリモート管理の設定が削除されます。保存済みのパスワードと信頼済みのホスト鍵も削除されます。"
+
+msgid "User name"
+msgstr "ユーザー名"
+
+msgid "Current Windows user"
+msgstr "現在の Windows ユーザー"
+
+msgid "Password"
+msgstr "パスワード"
+
+msgid "Not needed with a key file"
+msgstr "鍵ファイルを使う場合は不要"
+
+msgid "Not saved"
+msgstr "未保存"
+
+msgid "Delete saved password"
+msgstr "保存済みのパスワードを削除"
+
+msgid "Keep the saved password"
+msgstr "保存済みのパスワードを残す"
+
+msgid "Port"
+msgstr "ポート"
+
+msgid "Private key file"
+msgstr "秘密鍵ファイル"
+
+msgid "Optional, e.g. C:\\Users\\me\\.ssh\\id_ed25519"
+msgstr "任意 (例: C:\\Users\\me\\.ssh\\id_ed25519)"
+
+msgid "Key passphrase"
+msgstr "鍵のパスフレーズ"
+
+msgid "Only with a key file"
+msgstr "鍵ファイルを使う場合のみ"
+
+msgid "Delete saved passphrase"
+msgstr "保存済みのパスフレーズを削除"
+
+msgid "Keep the saved passphrase"
+msgstr "保存済みのパスフレーズを残す"
+
+msgid "Administrator rights (sudo)"
+msgstr "管理者権限 (sudo)"
+
+msgid "Automatic"
+msgstr "自動"
+
+msgid "Log in as root (no sudo)"
+msgstr "root でログイン (sudo なし)"
+
+msgid "sudo without a password (NOPASSWD)"
+msgstr "sudo (パスワードなし、NOPASSWD)"
+
+msgid "sudo with the login password"
+msgstr "sudo (ログインと同じパスワード)"
+
+msgid "sudo with a separate password"
+msgstr "sudo (別のパスワード)"
+
+msgid "The saved sudo password is deleted when you save, because this sudo method doesn't use it."
+msgstr "この sudo 方式では使用しないため、保存済みの sudo パスワードは保存時に削除されます。"
+
+msgid "sudo password"
+msgstr "sudo のパスワード"
+
+msgid "Delete saved sudo password"
+msgstr "保存済みの sudo パスワードを削除"
+
+msgid "Keep the saved sudo password"
+msgstr "保存済みの sudo パスワードを残す"
+
+msgid "Host key"
+msgstr "ホスト鍵"
+
+msgid "This key will be forgotten when you save."
+msgstr "保存時にこの鍵の信頼を解除します。"
+
+msgid "Not trusted yet. On the first connection you check the fingerprint and decide whether to trust it."
+msgstr "まだ信頼されていません。最初の接続時にフィンガープリントを確認して、信頼するかどうかを決めます。"
+
+msgid "Keep the trusted host key"
+msgstr "信頼済みのホスト鍵を残す"
+
+msgid "Forget the trusted host key"
+msgstr "ホスト鍵の信頼を解除"
+
+msgid "Own restart / shutdown commands"
+msgstr "独自の再起動・シャットダウン コマンド"
+
+msgid "The platform's default commands are used again when you save."
+msgstr "保存すると、OS 標準のコマンドに戻ります。"
+
+msgid "These run with root rights instead of the platform's commands. They can only be changed with wolm remote set."
+msgstr "OS 標準のコマンドの代わりに、root 権限で実行されます。変更は wolm remote set でのみ行えます。"
+
+msgid "Use the defaults"
+msgstr "標準に戻す"
+
+msgid "Keep the host's own commands"
+msgstr "ホスト独自のコマンドを残す"
+
+msgid "Use the platform's default commands"
+msgstr "OS 標準のコマンドに戻す"
+
+msgid "Use an administrator account of that PC. It must allow File and Printer Sharing (SMB) from this PC, also over a VPN. For local accounts, Windows may deny remote administration (UAC remote restrictions). See the README for the setup."
+msgstr "対象 PC の管理者アカウントを使用します。対象 PC では、この PC からの (VPN 経由も含む) ファイルとプリンターの共有 (SMB) を許可してください。ローカル アカウントでは、Windows がリモート管理を拒否することがあります (UAC のリモート制限)。設定方法は README を参照してください。"
+
+msgid "Log in as root or as a user who can use sudo. Restarting and shutting down need root rights."
+msgstr "root、または sudo を使えるユーザーでログインします。再起動とシャットダウンには root 権限が必要です。"
+
+msgid "Passwords are saved in Windows Credential Manager when you save the host, never in config.toml. Leave a saved password empty to keep it."
+msgstr "パスワードはホストの保存時に Windows 資格情報マネージャーに保存され、config.toml には保存されません。保存済みのパスワードを変更しない場合は空欄のままにしてください。"
+
+msgid "Test connection"
+msgstr "接続テスト"
+
+msgid "Connecting…"
+msgstr "接続しています…"
+
+msgid "Connected"
+msgstr "接続できました"
+
+msgid "Connected: {0}"
+msgstr "接続できました: {0}"
+
+msgid "The connection failed."
+msgstr "接続できませんでした。"
+
 msgid "Advanced settings"
 msgstr "詳細設定"
 
@@ -491,9 +571,6 @@ msgstr "追加の送信先"
 
 msgid "One per line, e.g. 192.168.20.255 or wol-relay.example.lan:9. Needed for other subnets."
 msgstr "1 行に 1 つずつ入力します (例: 192.168.20.255、wol-relay.example.lan:9)。別のサブネットにあるホストに必要です。"
-
-msgid "Port"
-msgstr "ポート"
 
 msgid "Default ({0})"
 msgstr "既定 ({0})"
@@ -516,14 +593,143 @@ msgstr "config.toml に平文で保存されます。ネットワーク カー�
 msgid "Status check"
 msgstr "状態の確認"
 
+msgid "Automatic (ping, then TCP)"
+msgstr "自動 (Ping の後に TCP)"
+
+msgid "Ping (ICMP)"
+msgstr "Ping (ICMP)"
+
+msgid "TCP port"
+msgstr "TCP ポート"
+
+msgid "Don't check"
+msgstr "確認しない"
+
 msgid "TCP ports"
 msgstr "TCP ポート"
 
 msgid "Save"
 msgstr "保存"
 
+msgid "The host key has changed"
+msgstr "ホスト鍵が変わっています"
+
+msgid "Trust this host key?"
+msgstr "このホスト鍵を信頼しますか?"
+
+msgid "WoL Manager is connecting to “{0}” over SSH for the first time. Make sure that the fingerprint below belongs to this host before you trust it."
+msgstr "「{0}」に初めて SSH で接続します。信頼する前に、次のフィンガープリントがこのホストのものであることを確認してください。"
+
+msgid "The connection was stopped."
+msgstr "接続を中止しました。"
+
+msgid "“{0}” sent a different key than the trusted one. The host may have been reinstalled, or someone may be intercepting the connection."
+msgstr "「{0}」から、信頼済みの鍵とは異なる鍵が送られてきました。ホストが再インストールされたか、第三者が通信を傍受している可能性があります。"
+
+msgid "Key type"
+msgstr "鍵の種類"
+
+msgid "Fingerprint"
+msgstr "フィンガープリント"
+
+msgid "Trusted key"
+msgstr "信頼済みの鍵"
+
+msgid "Received key"
+msgstr "受信した鍵"
+
+msgid "To see the host's current key, run this command on the host:"
+msgstr "ホストで次のコマンドを実行すると、現在の鍵を確認できます:"
+
+msgid "To check it, run this command on the host and compare the SHA256 value:"
+msgstr "確認するには、ホストで次のコマンドを実行し、SHA256 の値を比べてください:"
+
+msgid "If you know why the key changed, forget the trusted key. You will be asked to check the new key on the next connection."
+msgstr "鍵が変わった理由がわかっている場合は、信頼を解除してください。次の接続時に新しい鍵の確認を求められます。"
+
+msgid "Forget trusted key…"
+msgstr "信頼を解除…"
+
+msgid "Trust"
+msgstr "信頼する"
+
+msgid "Default route"
+msgstr "既定のルート"
+
+msgid "Recommended"
+msgstr "推奨"
+
+msgid "Disconnected"
+msgstr "未接続"
+
+msgid "Choose a network adapter"
+msgstr "ネットワーク アダプターの選択"
+
+msgid "“{0}” has several network adapters. Choose the one that should receive the magic packet, usually the wired adapter in the LAN."
+msgstr "「{0}」には複数のネットワーク アダプターがあります。マジック パケットを受け取るアダプター (通常は LAN の有線アダプター) を選んでください。"
+
+msgid "Network adapters"
+msgstr "ネットワーク アダプター"
+
+msgid "Select"
+msgstr "選択"
+
 msgid "Close (Esc)"
 msgstr "閉じる (Esc)"
+
+msgid "Restart host?"
+msgstr "ホストを再起動しますか?"
+
+msgid "Shut down host?"
+msgstr "ホストをシャットダウンしますか?"
+
+msgid "Anyone using this host may lose unsaved work."
+msgstr "このホストで保存されていない作業は失われる可能性があります。"
+
+msgid "To start it again later, use Wake. Wake-on-LAN must be enabled on the host."
+msgstr "後で起動するには「起動」を使います。ホストで Wake-on-LAN が有効になっている必要があります。"
+
+msgid "Delay"
+msgstr "実行までの時間"
+
+msgid "0 = immediately. During the countdown Windows shows a notice on the host, and “Cancel shutdown” can still stop it."
+msgstr "0 = すぐに実行。カウントダウン中はホストに通知が表示され、「シャットダウンを取り消す」で中止できます。"
+
+msgid "seconds"
+msgstr "秒"
+
+msgid "Force apps to close"
+msgstr "アプリを強制的に終了する"
+
+msgid "Apps with unsaved work are closed without asking. If this is off, such apps can stop Windows from shutting down."
+msgstr "保存されていない作業があるアプリも確認せずに終了します。オフの場合、そのようなアプリによって Windows のシャットダウンが中断されることがあります。"
+
+msgid "Message on the host"
+msgstr "ホストに表示するメッセージ"
+
+msgid "Shown only during a countdown (delay above 0)."
+msgstr "カウントダウン中 (実行までの時間が 1 秒以上) にのみ表示されます。"
+
+msgid "The command runs with root rights (with sudo if needed). It can take a few minutes until the host answers again."
+msgstr "コマンドは root 権限で実行されます (必要に応じて sudo を使用)。ホストが再び応答するまで数分かかることがあります。"
+
+msgid "The command runs with root rights (with sudo if needed). The host stops answering shortly afterwards."
+msgstr "コマンドは root 権限で実行されます (必要に応じて sudo を使用)。まもなくホストは応答しなくなります。"
+
+msgid "This host uses its own restart command"
+msgstr "このホストは独自の再起動コマンドを使います"
+
+msgid "This host uses its own shutdown command"
+msgstr "このホストは独自のシャットダウン コマンドを使います"
+
+msgid "Instead of the platform's default, this command from the host's settings runs with root rights. Continue only if you know it:"
+msgstr "OS 標準のコマンドの代わりに、ホストの設定にある次のコマンドが root 権限で実行されます。内容を確認できる場合だけ続けてください:"
+
+msgid "Restart"
+msgstr "再起動"
+
+msgid "Shut down"
+msgstr "シャットダウン"
 
 msgid "Appearance"
 msgstr "外観"
@@ -615,9 +821,6 @@ msgstr "起動の待ち時間"
 msgid "After a magic packet is sent, the status is checked every 3 seconds until this time has passed."
 msgstr "マジック パケットの送信後、この時間が経過するまで 3 秒ごとに状態を確認します。"
 
-msgid "seconds"
-msgstr "秒"
-
 msgid "Magic packet"
 msgstr "マジック パケット"
 
@@ -638,6 +841,72 @@ msgstr "VPN と仮想アダプターも使用する"
 
 msgid "For example WireGuard or Hyper-V adapters. Keep this off so that packets go out through the physical network."
 msgstr "WireGuard や Hyper-V のアダプターなど。通常はオフにして、物理ネットワークから送信します。"
+
+msgid "Restart and shutdown"
+msgstr "再起動とシャットダウン"
+
+msgid "Delay on Windows hosts"
+msgstr "実行までの時間 (Windows)"
+
+msgid "Default countdown before a Windows host restarts or shuts down. 0 = immediately."
+msgstr "Windows ホストが再起動またはシャットダウンするまでのカウントダウンの既定値です。0 = すぐに実行。"
+
+msgid "Force apps to close on Windows hosts"
+msgstr "アプリを強制的に終了する (Windows)"
+
+msgid "Apps with unsaved work are closed without asking. If this is off, such apps can stop the shutdown."
+msgstr "保存されていない作業があるアプリも確認せずに終了します。オフの場合、そのようなアプリによってシャットダウンが中断されることがあります。"
+
+msgid "Wait for the host to restart"
+msgstr "再起動の完了を待つ時間"
+
+msgid "After a restart, the host must answer again with a new boot time within this time."
+msgstr "再起動後、この時間内にホストが新しい起動時刻で応答すると完了とみなします。"
+
+msgid "Wait for the host to shut down"
+msgstr "シャットダウンの完了を待つ時間"
+
+msgid "After a shutdown, the host must stop answering within this time."
+msgstr "シャットダウン後、この時間内にホストが応答しなくなると完了とみなします。"
+
+msgid "Connection"
+msgstr "接続"
+
+msgid "Connection timeout"
+msgstr "接続タイムアウト"
+
+msgid "How long to wait for a host to accept the connection."
+msgstr "ホストが接続を受け付けるまで待つ時間です。"
+
+msgid "Get the boot time automatically"
+msgstr "起動時刻を自動で取得する"
+
+msgid "When a host with remote management comes online, its boot time is shown in the list."
+msgstr "リモート管理を設定したホストがオンラインになると、一覧に起動時刻を表示します。"
+
+msgid "Security and requirements"
+msgstr "セキュリティと前提条件"
+
+msgid "Passwords are kept in Windows Credential Manager"
+msgstr "パスワードは Windows 資格情報マネージャーに保存されます"
+
+msgid "They are stored for your Windows user on this PC only, never in config.toml, and are not included in portable data or exported files. On another PC, enter them again."
+msgstr "現在の Windows ユーザー用にこの PC にだけ保存され、config.toml には書き込まれません。ポータブル版のデータやエクスポートしたファイルにも含まれないため、別の PC では入力し直してください。"
+
+msgid "Windows hosts"
+msgstr "Windows ホスト"
+
+msgid "An administrator account of the host, and File and Printer Sharing (SMB) allowed from this PC, also over a VPN. Looking up the MAC address also uses WMI."
+msgstr "ホストの管理者アカウントと、この PC からの (VPN 経由も含む) ファイルとプリンターの共有 (SMB) の許可が必要です。MAC アドレスの取得には WMI も使用します。"
+
+msgid "Linux, NAS and other SSH hosts"
+msgstr "Linux、NAS などの SSH ホスト"
+
+msgid "SSH login as root, or as a user who can use sudo (with or without a password)."
+msgstr "root、または sudo を使えるユーザー (パスワードの有無は問いません) での SSH ログインが必要です。"
+
+msgid "Setup guide (README)"
+msgstr "設定ガイド (README)"
 
 msgid "Settings location"
 msgstr "設定の保存場所"
@@ -693,12 +962,8 @@ msgstr "システムの PATH (すべてのユーザー)"
 msgid "Registered by the installer. wolm can be used in any new terminal window."
 msgstr "インストーラーによって登録されています。新しいターミナル ウィンドウで wolm を使用できます。"
 
-msgid ""
-"Not registered. Run the installer again with “Add the wolm command to PATH” "
-"selected."
-msgstr ""
-"未登録です。「wolm コマンドを PATH に追加」を選択してインストーラーを再実行して"
-"ください。"
+msgid "Not registered. Run the installer again with “Add the wolm command to PATH” selected."
+msgstr "未登録です。「wolm コマンドを PATH に追加」を選択してインストーラーを再実行してください。"
 
 msgid "The system PATH could not be read."
 msgstr "システムの PATH を読み取れませんでした。"
@@ -750,3 +1015,147 @@ msgstr "保存場所とコマンドライン"
 
 msgid "Advanced"
 msgstr "詳細"
+
+msgid "Checking…"
+msgstr "確認中…"
+
+msgid "Online"
+msgstr "オンライン"
+
+msgid "Offline"
+msgstr "オフライン"
+
+msgid "Waking…"
+msgstr "起動中…"
+
+msgid "No response"
+msgstr "応答なし"
+
+msgid "Not monitored"
+msgstr "監視なし"
+
+msgid "Restarting…"
+msgstr "再起動中…"
+
+msgid "Shutting down…"
+msgstr "シャットダウン中…"
+
+msgid "Unknown"
+msgstr "未確認"
+
+msgid "Wired"
+msgstr "有線"
+
+msgid "Wi-Fi"
+msgstr "Wi-Fi"
+
+msgid "Other"
+msgstr "その他"
+
+msgid "Answered ping in {0} ms"
+msgstr "Ping に {0} ms で応答しました"
+
+msgid "Answered ping"
+msgstr "Ping に応答しました"
+
+msgid "Answered on a TCP port in {0} ms"
+msgstr "TCP ポートに {0} ms で応答しました"
+
+msgid "Answered on a TCP port"
+msgstr "TCP ポートに応答しました"
+
+msgid "The host answered the last check."
+msgstr "前回の確認で応答がありました。"
+
+msgid "The host did not answer the last check."
+msgstr "前回の確認で応答がありませんでした。"
+
+msgid "Magic packet sent. Waiting for the host to answer…"
+msgstr "マジック パケットを送信しました。応答を待っています…"
+
+msgid "The host did not answer after the magic packet was sent."
+msgstr "マジック パケットの送信後、応答がありませんでした。"
+
+msgid "Checking whether the host answers…"
+msgstr "応答があるか確認しています…"
+
+msgid "Restart requested. Waiting for the host to start again…"
+msgstr "再起動を要求しました。ホストが再び起動するのを待っています…"
+
+msgid "Shutdown requested. Waiting for the host to stop answering…"
+msgstr "シャットダウンを要求しました。ホストが応答しなくなるのを待っています…"
+
+msgid "No address is set, so the status can't be checked."
+msgstr "アドレスが設定されていないため、状態を確認できません。"
+
+msgid "Status checks are turned off for this host."
+msgstr "このホストの状態確認はオフになっています。"
+
+msgid "Not checked yet."
+msgstr "まだ確認していません。"
+
+msgid "Required."
+msgstr "必須です。"
+
+msgid "Enter a MAC address such as AA:BB:CC:DD:EE:FF."
+msgstr "AA:BB:CC:DD:EE:FF のような形式で MAC アドレスを入力してください。"
+
+msgid "Multicast, broadcast and all-zero addresses can't be woken. The first byte must be even."
+msgstr "マルチキャスト、ブロードキャスト、すべて 0 のアドレスは起動の対象にできません。1 バイト目は偶数にしてください。"
+
+msgid "Enter an IPv4 address or a host name."
+msgstr "IPv4 アドレスまたはホスト名を入力してください。"
+
+msgid "Enter a port number from 1 to 65535."
+msgstr "1 ～ 65535 のポート番号を入力してください。"
+
+msgid "Enter port numbers from 1 to 65535, separated by commas."
+msgstr "1 ～ 65535 のポート番号をカンマ区切りで入力してください。"
+
+msgid "Enter up to 16 ports."
+msgstr "ポートは 16 個までにしてください。"
+
+msgid "Enter 6 bytes in hex, such as 01:23:45:67:89:AB."
+msgstr "01:23:45:67:89:AB のような 6 バイトの 16 進数を入力してください。"
+
+msgid "Enter one target per line as host or host:port."
+msgstr "送信先は 1 行に 1 つずつ、ホストまたはホスト:ポートの形式で入力してください。"
+
+msgid "A host with this name already exists."
+msgstr "この名前のホストは既に存在します。"
+
+msgid "The name can't be a MAC address."
+msgstr "MAC アドレスを名前にすることはできません。"
+
+msgid "Use 64 characters or fewer."
+msgstr "64 文字以内で入力してください。"
+
+msgid "Contains kana. Turn off the IME and type it again."
+msgstr "かなが含まれています。IME をオフにして入力し直してください。"
+
+msgid "This user name contains characters that can't be used."
+msgstr "ユーザー名に使用できない文字が含まれています。"
+
+msgid "The command contains characters that can't be used, or it is too long."
+msgstr "コマンドに使用できない文字が含まれているか、コマンドが長すぎます。"
+
+msgid "The host key is not an OpenSSH public key such as ssh-ed25519 AAAA…"
+msgstr "ホスト鍵が ssh-ed25519 AAAA… のような OpenSSH 形式の公開鍵ではありません。"
+
+msgid "Custom location"
+msgstr "カスタムの場所"
+
+msgid "Standard (AppData)"
+msgstr "標準 (AppData)"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Show WoL Manager"
+msgstr "WoL Manager を表示"
+
+msgid "Wake host"
+msgstr "ホストを起動"
+
+msgid "{0} (online)"
+msgstr "{0} (オンライン)"

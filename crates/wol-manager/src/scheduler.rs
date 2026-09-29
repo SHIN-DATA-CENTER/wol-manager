@@ -7,6 +7,9 @@
 //!   `Timeout`. `Timeout` is kept until the host answers or is woken again.
 //! * Every job carries the host's generation; editing the address / probe options or
 //!   deleting the host bumps it, so late results are dropped.
+//! * v0.2.0: after an accepted restart / shutdown the host shows `Restarting` /
+//!   `ShuttingDown` until the verification (on its own thread, see `crate::remote`) ends.
+//!   Meanwhile the host is not probed periodically and late probe results are ignored.
 //!
 //! The scheduler never touches Slint or threads; `app` turns [`Job`]s into probes on the
 //! probe pool and feeds results back through [`Scheduler::on_result`].
@@ -90,6 +93,30 @@ impl From<RowStateKey> for RowState {
     }
 }
 
+/// A restart / shutdown is being verified (the status before it, restored on cancel).
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RemoteHold {
+    prev: RowStateKey,
+}
+
+/// How the verification of a restart / shutdown ended (see [`Scheduler::remote_finished`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RemoteEnd {
+    /// The host answers (restart verified, or a shutdown that did not happen).
+    Up {
+        /// How the last probe answered (`None` = not known yet).
+        via: ProbeVia,
+        /// Round-trip time, -1 = unknown.
+        rtt_ms: i32,
+    },
+    /// The host stopped answering (shutdown verified).
+    Offline,
+    /// The restart was not confirmed in time.
+    Timeout,
+    /// Back to the status before the request (cancelled, aborted, not verifiable).
+    Restore,
+}
+
 #[derive(Debug, Clone)]
 struct Mon {
     st: RowStateKey,
@@ -99,6 +126,7 @@ struct Mon {
     in_flight: Option<u64>, // round id (0 = not part of a round)
     next_due: Option<Instant>,
     waking: Option<Waking>,
+    remote: Option<RemoteHold>,
 }
 
 impl Mon {
@@ -203,11 +231,20 @@ impl Scheduler {
                     m.monitored = monitored;
                     m.probe_key = key;
                     m.waking = None;
-                    m.st = RowStateKey {
+                    let idle = RowStateKey {
                         status: Mon::idle_status(monitored),
                         via: ProbeVia::None,
                         rtt_ms: -1,
                     };
+                    match m.remote.as_mut() {
+                        // A restart / shutdown is being verified: the verification follows the
+                        // management endpoint, not these probe inputs, and keeps running
+                        // (`crate::remote` cancels it when the endpoint changes and restores
+                        // the status then). Keep showing it; the status it goes back to is
+                        // unknown now (review C8).
+                        Some(hold) => hold.prev = idle,
+                        None => m.st = idle,
+                    }
                     m.next_due = self.poll.map(|_| now);
                     round_done |= self.release(old_round);
                 }
@@ -226,6 +263,7 @@ impl Scheduler {
                             in_flight: None,
                             next_due: self.poll.map(|_| now),
                             waking: None,
+                            remote: None,
                         },
                     );
                 }
@@ -285,7 +323,7 @@ impl Scheduler {
                 }
                 continue;
             }
-            if !visible || !m.monitored || m.in_flight.is_some() {
+            if !visible || !m.monitored || m.in_flight.is_some() || m.remote.is_some() {
                 continue;
             }
             if poll.is_some() && m.next_due.is_some_and(|d| now >= d) {
@@ -314,7 +352,7 @@ impl Scheduler {
             let Some(m) = self.hosts.get_mut(&id) else {
                 continue;
             };
-            if m.monitored && m.waking.is_none() && m.in_flight.is_none() {
+            if m.monitored && m.waking.is_none() && m.in_flight.is_none() && m.remote.is_none() {
                 jobs.push(Self::dispatch(m, id, JobKind::Manual, round));
             }
         }
@@ -339,6 +377,16 @@ impl Scheduler {
             return None;
         }
         let round = m.in_flight.take();
+        if m.remote.is_some() {
+            // Restarting / ShuttingDown: the verification owns the status.
+            m.next_due = poll.map(|p| now + p);
+            let round_done = self.release(round);
+            return Some(Applied {
+                changed: false,
+                event: None,
+                round_done,
+            });
+        }
         let before = m.st;
         let mut event = None;
         match state {
@@ -392,9 +440,11 @@ impl Scheduler {
         if !m.monitored {
             return false;
         }
-        let prev = match &m.waking {
-            Some(w) => w.prev,
-            None => m.st,
+        // A wake supersedes a running restart / shutdown verification.
+        let prev = match (m.remote.take(), &m.waking) {
+            (Some(r), _) => r.prev,
+            (None, Some(w)) => w.prev,
+            (None, None) => m.st,
         };
         m.waking = Some(Waking {
             deadline: now + verify,
@@ -427,6 +477,81 @@ impl Scheduler {
         }
     }
 
+    /// A restart / shutdown was accepted: `status` (`Restarting` / `ShuttingDown`) until
+    /// [`Scheduler::remote_finished`]. Also for hosts that are not monitored (the verification
+    /// reads the boot time). Returns `false` for unknown hosts.
+    pub fn remote_started(&mut self, id: HostId, status: HostStatus) -> bool {
+        let Some(m) = self.hosts.get_mut(&id) else {
+            return false;
+        };
+        let prev = match (&m.remote, &m.waking) {
+            (Some(r), _) => r.prev,
+            (None, Some(w)) => w.prev,
+            (None, None) => m.st,
+        };
+        m.waking = None;
+        m.remote = Some(RemoteHold { prev });
+        m.st = RowStateKey {
+            status,
+            via: ProbeVia::None,
+            rtt_ms: -1,
+        };
+        true
+    }
+
+    /// The verification ended: the status that follows. The host is probed again at the next
+    /// tick (when periodic checks are on) to refresh how it answers. Returns `false` when no
+    /// verification was shown (host gone, reset by an edit, superseded by a wake).
+    pub fn remote_finished(&mut self, id: HostId, end: RemoteEnd, now: Instant) -> bool {
+        let poll = self.poll;
+        let Some(m) = self.hosts.get_mut(&id) else {
+            return false;
+        };
+        let Some(hold) = m.remote.take() else {
+            return false;
+        };
+        m.st = match end {
+            RemoteEnd::Up { via, rtt_ms } => RowStateKey {
+                status: HostStatus::Online,
+                via,
+                rtt_ms,
+            },
+            RemoteEnd::Offline => RowStateKey {
+                status: HostStatus::Offline,
+                via: ProbeVia::None,
+                rtt_ms: -1,
+            },
+            RemoteEnd::Timeout => RowStateKey {
+                status: HostStatus::Timeout,
+                via: ProbeVia::None,
+                rtt_ms: -1,
+            },
+            RemoteEnd::Restore => {
+                let mut st = hold.prev;
+                if matches!(
+                    st.status,
+                    HostStatus::Checking
+                        | HostStatus::Waking
+                        | HostStatus::Restarting
+                        | HostStatus::ShuttingDown
+                ) {
+                    st.status = Mon::idle_status(m.monitored);
+                }
+                st
+            }
+        };
+        if m.monitored {
+            m.next_due = poll.map(|_| now);
+        }
+        true
+    }
+
+    /// A restart / shutdown of the host is being verified.
+    #[cfg(test)]
+    pub fn is_verifying(&self, id: HostId) -> bool {
+        self.hosts.get(&id).is_some_and(|m| m.remote.is_some())
+    }
+
     /// Row state of a host (default for unknown ids).
     pub fn row_state(&self, id: HostId) -> RowState {
         self.hosts.get(&id).map(|m| m.st.into()).unwrap_or_default()
@@ -437,11 +562,18 @@ impl Scheduler {
         self.hosts.get(&id).is_some_and(|m| m.monitored)
     }
 
-    /// Some host is `Checking` or `Waking` (drives the pulse animation).
+    /// Some host is `Checking`, `Waking`, `Restarting` or `ShuttingDown` (drives the pulse
+    /// animation).
     pub fn any_pulsing(&self) -> bool {
-        self.hosts
-            .values()
-            .any(|m| matches!(m.st.status, HostStatus::Checking | HostStatus::Waking))
+        self.hosts.values().any(|m| {
+            matches!(
+                m.st.status,
+                HostStatus::Checking
+                    | HostStatus::Waking
+                    | HostStatus::Restarting
+                    | HostStatus::ShuttingDown
+            )
+        })
     }
 
     /// Number of hosts that are waking.
@@ -711,6 +843,126 @@ mod tests {
         s.set_poll(Some(T30), t0);
         assert!(s.tick(t0 + Duration::from_secs(29), true).0.is_empty());
         assert_eq!(s.tick(t0 + T30, true).0.len(), 1);
+    }
+
+    fn online(s: &mut Scheduler, id: HostId, t: Instant) {
+        let (jobs, _) = s.tick(t, true);
+        let j = jobs.iter().find(|j| j.id == id).expect("probed");
+        s.on_result(id, j.generation, &up(), t).unwrap();
+        assert_eq!(status(s, id), HostStatus::Online);
+    }
+
+    #[test]
+    fn restarting_holds_status_until_verified() {
+        let a = host("a", Some("127.0.0.1"));
+        let ia = a.id;
+        let t0 = Instant::now();
+        let mut s = Scheduler::new(Some(T30));
+        s.sync(&cfg(vec![a]), t0);
+        online(&mut s, ia, t0);
+        // A periodic probe is in flight when the restart is accepted.
+        let (jobs, _) = s.tick(t0 + T30, true);
+        assert_eq!(jobs.len(), 1);
+        assert!(s.remote_started(ia, HostStatus::Restarting));
+        assert!(s.is_verifying(ia));
+        assert_eq!(status(&s, ia), HostStatus::Restarting);
+        assert!(s.any_pulsing(), "restarting pulses");
+        // The late probe result (host still up) does not overwrite the status...
+        let r = s
+            .on_result(ia, jobs[0].generation, &up(), t0 + T30)
+            .unwrap();
+        assert!(!r.changed && r.round_done);
+        assert_eq!(status(&s, ia), HostStatus::Restarting);
+        // ...and nothing is probed while the verification runs.
+        assert!(s.tick(t0 + T30 * 3, true).0.is_empty());
+        assert!(s.refresh_all().is_empty());
+        // Verified: online again, probed at the next tick.
+        let t1 = t0 + T30 * 4;
+        assert!(s.remote_finished(
+            ia,
+            RemoteEnd::Up {
+                via: ProbeVia::None,
+                rtt_ms: -1
+            },
+            t1
+        ));
+        assert_eq!(status(&s, ia), HostStatus::Online);
+        assert!(!s.is_verifying(ia));
+        assert!(!s.any_pulsing());
+        assert_eq!(s.tick(t1, true).0.len(), 1);
+        // A second end is ignored.
+        assert!(!s.remote_finished(ia, RemoteEnd::Timeout, t1));
+        assert_eq!(status(&s, ia), HostStatus::Online);
+    }
+
+    #[test]
+    fn restart_timeout_and_shutdown_offline() {
+        let a = host("a", Some("127.0.0.1"));
+        let b = host("b", Some("127.0.0.2"));
+        let (ia, ib) = (a.id, b.id);
+        let t0 = Instant::now();
+        let mut s = Scheduler::new(Some(T30));
+        s.sync(&cfg(vec![a, b]), t0);
+        let (jobs, _) = s.tick(t0, true);
+        for j in &jobs {
+            s.on_result(j.id, j.generation, &up(), t0);
+        }
+        s.remote_started(ia, HostStatus::Restarting);
+        s.remote_started(ib, HostStatus::ShuttingDown);
+        assert_eq!(status(&s, ib), HostStatus::ShuttingDown);
+        assert_eq!(s.online_count(), 0);
+        s.remote_finished(ia, RemoteEnd::Timeout, t0);
+        assert_eq!(status(&s, ia), HostStatus::Timeout);
+        s.remote_finished(ib, RemoteEnd::Offline, t0);
+        assert_eq!(status(&s, ib), HostStatus::Offline);
+    }
+
+    #[test]
+    fn abort_restores_and_edits_or_wakes_supersede() {
+        let a = host("a", Some("127.0.0.1"));
+        let ia = a.id;
+        let t0 = Instant::now();
+        let mut c = cfg(vec![a]);
+        let mut s = Scheduler::new(Some(T30));
+        s.sync(&c, t0);
+        online(&mut s, ia, t0);
+        // Cancel shutdown: back to the status before the request.
+        s.remote_started(ia, HostStatus::ShuttingDown);
+        assert!(s.remote_finished(ia, RemoteEnd::Restore, t0));
+        assert_eq!(status(&s, ia), HostStatus::Online);
+        // A wake supersedes the verification.
+        s.remote_started(ia, HostStatus::Restarting);
+        assert!(s.wake_started(ia, t0, T30));
+        assert!(!s.is_verifying(ia));
+        assert_eq!(status(&s, ia), HostStatus::Waking);
+        assert!(s.wake_failed(ia));
+        assert_eq!(
+            status(&s, ia),
+            HostStatus::Online,
+            "status before the restart"
+        );
+        // Review C8: an edit of the probe inputs keeps showing the verification (it follows
+        // the management endpoint; `crate::remote` ends it, and restores the status, when
+        // that changes); what it goes back to is "unknown" now. Late probes of the old inputs
+        // are dropped.
+        s.remote_started(ia, HostStatus::Restarting);
+        let old = s.tick(t0 + T30 * 2, true).0;
+        assert!(old.is_empty(), "not probed while verifying");
+        c.get_mut(ia).unwrap().address = Some(HostAddr::parse("127.0.0.9").unwrap());
+        s.sync(&c, t0);
+        assert!(s.is_verifying(ia));
+        assert_eq!(status(&s, ia), HostStatus::Restarting);
+        assert!(s.remote_finished(ia, RemoteEnd::Restore, t0));
+        assert_eq!(status(&s, ia), HostStatus::Unknown);
+        // Hosts that are not monitored can be restarted too (restore -> not monitored).
+        let n = host("n", None);
+        let inn = n.id;
+        c.hosts.push(n);
+        s.sync(&c, t0);
+        assert!(s.remote_started(inn, HostStatus::Restarting));
+        assert!(s.remote_finished(inn, RemoteEnd::Restore, t0));
+        assert_eq!(status(&s, inn), HostStatus::NotMonitored);
+        assert!(!s.remote_started(HostId::new_v4(), HostStatus::Restarting));
     }
 
     #[test]
