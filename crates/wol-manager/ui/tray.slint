@@ -1,0 +1,57 @@
+// Notification-area icon. A SystemTrayIcon instance does NOT share globals with AppWindow, so
+// everything it needs is a property / callback of AppTray itself.
+//
+// Rules (Slint 1.18): exactly one Menu child, not inside if/for (entries inside may use for/if);
+// MenuItem icons cannot be tinted, so no icons are used in the menu.
+
+import { AppArt } from "@coolicons";
+import { HostStatus, TrayHost } from "types.slint";
+
+export component AppTray inherits SystemTrayIcon {
+    /// Small-icon size in physical pixels: GetSystemMetrics(SM_CXSMICON) (16 at 100 %, 20 at 125 %,
+    /// 24 at 150 %, 32 at 200 %). The closest of the plated PNGs tray-16/20/24/32 is used; the
+    /// PNG is handed to Windows at its intrinsic size, so the size matters.
+    in property <int> icon-size: 16;
+    /// Hover text; "" = "WoL Manager". Rust can append state, e.g. "WoL Manager – 2 waking".
+    in property <string> tip;
+    /// Hosts for the "Wake host" submenu, in display order (Rust keeps it short, <= 40 entries).
+    in property <[TrayHost]> hosts;
+
+    callback show-window();
+    callback wake(id: string);
+    callback open-settings();
+    callback quit();
+
+    icon: root.icon-size <= 18 ? AppArt.tray-16
+        : root.icon-size <= 22 ? AppArt.tray-20
+        : root.icon-size <= 28 ? AppArt.tray-24
+        : AppArt.tray-32;
+    tooltip: root.tip != "" ? root.tip : "WoL Manager";
+
+    // Windows: left click. Right click opens the menu.
+    clicked => { root.show-window(); }
+
+    Menu {
+        MenuItem {
+            title: @tr("Show WoL Manager");
+            activated => { root.show-window(); }
+        }
+        Menu {
+            title: @tr("Wake host");
+            enabled: root.hosts.length > 0;
+            for h in root.hosts : MenuItem {
+                title: h.status == HostStatus.online ? @tr("{0} (online)", h.name) : h.name;
+                activated => { root.wake(h.id); }
+            }
+        }
+        MenuItem {
+            title: @tr("Settings…");
+            activated => { root.open-settings(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: @tr("Exit");
+            activated => { root.quit(); }
+        }
+    }
+}

@@ -1,0 +1,25 @@
+WoL Manager {{VERSION}} - Third-Party Notices
+==============================================================================
+
+WoL Manager (wol-manager.exe and bin\wolm.exe) is Copyright (c) SHIN DATA CENTER
+and is licensed under the Apache License, Version 2.0 (see LICENSE.txt).
+https://github.com/SHIN-DATA-CENTER/wol-manager
+
+The Apache License 2.0 applies only to WoL Manager's own source code. It does
+NOT apply to the third-party material listed below, which is used under its
+own license:
+
+  1. Icons: coolicons v4.1 by Kryston Schwarze (CC BY 4.0)
+  2. GUI toolkit: Slint (Slint Royalty-free Desktop, Mobile, and Web
+     Applications License 2.0)
+  3. Rust crates compiled into the programs (license list generated with
+     cargo-about)
+
+WoL Manager (wol-manager.exe / bin\wolm.exe) は SHIN DATA CENTER が著作権を持ち、
+Apache License 2.0 で提供しています（LICENSE.txt を参照）。Apache License 2.0 が
+適用されるのは WoL Manager 自身のソースコードだけです。以下のサードパーティの
+素材（アイコン、Slint、各 Rust クレート）には、それぞれのライセンスが適用されます。
+
+==============================================================================
+1. Icons: coolicons v4.1 (CC BY 4.0)
+==============================================================================

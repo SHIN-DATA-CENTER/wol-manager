@@ -1,0 +1,17 @@
+------------------------------------------------------------------------------
+coolicons v4.1
+------------------------------------------------------------------------------
+Icons: coolicons v4.1 by Kryston Schwarze
+  https://coolicons.cool/
+  https://github.com/krystonschwarze/coolicons
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+  https://creativecommons.org/licenses/by/4.0/
+
+Modifications: a subset of the icons is embedded in wol-manager.exe and wolm.exe.
+The icons were recolored at run time, placed on colored rounded plates, had their
+stroke width adjusted and were rasterized (PNG/ICO) for the application and tray
+icons.
+
+The icons are provided by the licensor "as-is" and without warranties of any kind.
+The Apache License 2.0 that covers WoL Manager's own source code does NOT apply to
+these icons, and no additional terms or restrictions are imposed on them.

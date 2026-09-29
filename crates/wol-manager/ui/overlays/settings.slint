@@ -1,0 +1,700 @@
+// Settings overlay. Changes are applied immediately: each control updates SettingsState and
+// invokes SettingsState.changed(<config key>); Rust persists (debounced) and applies them.
+//
+// Every control takes its accessible label from its SettingRow title and is disabled while the
+// confirm dialog is open above the settings (ModalGate.overlay-enabled), so that Tab can't
+// reach it.
+
+import { Button, ComboBox, LineEdit, SpinBox, Switch, ScrollView } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { OverlayKind, StorageMode, PortableBlock, PathMode, PathState, FieldIssue } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { AppState, SettingsState, Validator, Texts, ModalGate } from "../state.slint";
+import {
+    Icon, SettingRow, SectionHeader, HintText, IssueText, CodeChip, Divider, BusySpinner,
+} from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+/// Entry of the page list on the left. Keyboard: only the selected entry is a Tab stop;
+/// Up / Down / Home / End move to another page (and the focus with it).
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> selected;
+    in property <bool> enabled: true;
+    callback clicked();
+    /// Keyboard navigation: -1 / +1 = previous / next page, -100 / +100 = first / last page.
+    callback move(delta: int);
+    min-height: 38px;
+    border-radius: 4px;
+    background: ta.pressed ? Theme.pressed : root.selected ? Theme.hover : ta.has-hover ? Theme.hover : transparent;
+    forward-focus: fs;
+    accessible-role: tab;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-item-selected: root.selected;
+    accessible-action-default => {
+        if root.enabled {
+            root.clicked();
+        }
+    }
+
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 16px;
+        border-radius: 1.5px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 10px;
+        Icon {
+            source: root.icon;
+            size: 16px;
+            tint: Theme.text;
+            cross-axis-self-alignment: center;
+        }
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-weight: root.selected ? 600 : 400;
+            vertical-alignment: center;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            fs.focus();
+            root.clicked();
+        }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        focus-on-tab-navigation: root.selected;
+        key-pressed(event) => {
+            if event.text == Key.UpArrow {
+                root.move(-1);
+                return accept;
+            }
+            if event.text == Key.DownArrow {
+                root.move(1);
+                return accept;
+            }
+            if event.text == Key.Home {
+                root.move(-100);
+                return accept;
+            }
+            if event.text == Key.End {
+                root.move(100);
+                return accept;
+            }
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus && root.enabled : Rectangle {
+        border-radius: root.border-radius;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+/// Unit suffix next to a SpinBox ("seconds", "ms"). Fixed width, so that the fields of all rows
+/// line up (60 px fits "seconds" and "ミリ秒").
+component Unit inherits Text {
+    color: Theme.text-secondary;
+    vertical-alignment: center;
+    horizontal-stretch: 0;
+    width: 60px;
+}
+
+/// Scrollable page area of the settings overlay. The user of it must bind
+/// `content-height: max(self.visible-height, <page>.preferred-height)`: the automatic content
+/// height of the Flickable ignores the wrapped descriptions, so the page would not scroll.
+component PageScroll inherits ScrollView {
+    horizontal-stretch: 1;
+    horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+}
+
+component GeneralPage inherits VerticalLayout {
+    spacing: 8px;
+    alignment: start;
+    padding-left: 4px;
+    padding-right: 16px;
+    padding-bottom: 8px;
+
+    property <bool> tray-usable: SettingsState.tray-available && SettingsState.show-tray;
+
+    SectionHeader { title: @tr("Appearance"); }
+    language-row := SettingRow {
+        icon: CoolIcons.globe;
+        title: @tr("Language");
+        ComboBox {
+            width: 190px;
+            accessible-label: language-row.title;
+            enabled: ModalGate.overlay-enabled;
+            model: [@tr("Use system setting"), "日本語", "English"];
+            current-index <=> SettingsState.language-index;
+            selected => { SettingsState.changed("language"); }
+        }
+    }
+    theme-row := SettingRow {
+        icon: Theme.dark ? CoolIcons.moon : CoolIcons.sun;
+        title: @tr("Theme");
+        ComboBox {
+            width: 190px;
+            accessible-label: theme-row.title;
+            enabled: ModalGate.overlay-enabled;
+            model: [@tr("Use system setting"), @tr("Light"), @tr("Dark")];
+            current-index <=> SettingsState.theme-index;
+            selected => { SettingsState.changed("gui.theme"); }
+        }
+    }
+
+    SectionHeader {
+        title: @tr("Notification area");
+        description: SettingsState.tray-available ? "" : @tr("The notification area icon could not be created, so these options are unavailable.");
+    }
+    show-tray-row := SettingRow {
+        title: @tr("Show an icon in the notification area");
+        enabled: SettingsState.tray-available;
+        Switch {
+            accessible-label: show-tray-row.title;
+            enabled: SettingsState.tray-available && ModalGate.overlay-enabled;
+            checked <=> SettingsState.show-tray;
+            toggled => { SettingsState.changed("gui.show_tray"); }
+        }
+    }
+    close-row := SettingRow {
+        title: @tr("Keep running in the notification area when the window is closed");
+        enabled: root.tray-usable;
+        Switch {
+            accessible-label: close-row.title;
+            enabled: root.tray-usable && ModalGate.overlay-enabled;
+            checked <=> SettingsState.close-to-tray;
+            toggled => { SettingsState.changed("gui.close_to_tray"); }
+        }
+    }
+    minimize-row := SettingRow {
+        title: @tr("Minimize to the notification area");
+        enabled: root.tray-usable;
+        Switch {
+            accessible-label: minimize-row.title;
+            enabled: root.tray-usable && ModalGate.overlay-enabled;
+            checked <=> SettingsState.minimize-to-tray;
+            toggled => { SettingsState.changed("gui.minimize_to_tray"); }
+        }
+    }
+    start-row := SettingRow {
+        title: @tr("Start in the notification area");
+        description: @tr("The window is not shown at startup.");
+        enabled: root.tray-usable;
+        Switch {
+            accessible-label: start-row.title;
+            accessible-description: start-row.description;
+            enabled: root.tray-usable && ModalGate.overlay-enabled;
+            checked <=> SettingsState.start-in-tray;
+            toggled => { SettingsState.changed("gui.start_in_tray"); }
+        }
+    }
+}
+
+component WakePage inherits VerticalLayout {
+    spacing: 8px;
+    alignment: start;
+    padding-left: 4px;
+    padding-right: 16px;
+    padding-bottom: 8px;
+
+    property <FieldIssue> tcp-issue: FieldIssue.none;
+    property <FieldIssue> port-issue: FieldIssue.none;
+
+    SectionHeader { title: @tr("Status checks"); }
+    poll-row := SettingRow {
+        icon: CoolIcons.refresh;
+        title: @tr("Check status automatically");
+        description: @tr("While the window is hidden, only waking hosts are checked.");
+        ComboBox {
+            width: 170px;
+            accessible-label: poll-row.title;
+            accessible-description: poll-row.description;
+            enabled: ModalGate.overlay-enabled;
+            model: SettingsState.poll-index == 5
+                ? [@tr("Off"), @tr("Every 10 seconds"), @tr("Every 30 seconds"), @tr("Every minute"), @tr("Every 5 minutes"), @tr("Custom ({0} s)", SettingsState.poll-custom-secs)]
+                : [@tr("Off"), @tr("Every 10 seconds"), @tr("Every 30 seconds"), @tr("Every minute"), @tr("Every 5 minutes")];
+            current-index <=> SettingsState.poll-index;
+            selected => { SettingsState.changed("gui.poll_interval_secs"); }
+        }
+    }
+    method-row := SettingRow {
+        icon: CoolIcons.search;
+        title: @tr("How to check");
+        description: @tr("Default for hosts without their own setting (host editor > Advanced settings).");
+        ComboBox {
+            width: 210px;
+            accessible-label: method-row.title;
+            accessible-description: method-row.description;
+            enabled: ModalGate.overlay-enabled;
+            model: [@tr("Automatic (ping, then TCP)"), @tr("Ping (ICMP)"), @tr("TCP port"), @tr("Don't check")];
+            current-index <=> SettingsState.probe-method-index;
+            selected => { SettingsState.changed("probe.method"); }
+        }
+    }
+    tcp-row := SettingRow {
+        title: @tr("TCP ports");
+        description: @tr("Tried when a host doesn't answer ping (automatic) or is checked by TCP. Separate them with commas.");
+        LineEdit {
+            width: 170px;
+            accessible-label: tcp-row.title;
+            accessible-description: tcp-row.description;
+            enabled: ModalGate.overlay-enabled;
+            input-type: InputType.text;
+            text: SettingsState.probe-tcp-ports;
+            placeholder-text: @tr("None");
+            edited(text) => {
+                root.tcp-issue = Validator.check-tcp-ports(text);
+                if root.tcp-issue == FieldIssue.none {
+                    SettingsState.probe-tcp-ports = text;
+                    SettingsState.changed("probe.tcp_ports");
+                }
+            }
+            // Leaving the field with an invalid list shows the saved ports again.
+            changed has-focus => {
+                if !self.has-focus {
+                    self.text = SettingsState.probe-tcp-ports;
+                    root.tcp-issue = FieldIssue.none;
+                }
+            }
+        }
+    }
+    if root.tcp-issue != FieldIssue.none : IssueText {
+        text: Texts.issue(root.tcp-issue);
+    }
+    timeout-row := SettingRow {
+        title: @tr("Response timeout");
+        description: @tr("How long one check waits for an answer.");
+        SpinBox {
+            width: 110px;
+            accessible-label: timeout-row.title;
+            accessible-description: timeout-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 100;
+            maximum: 30000;
+            step-size: 100;
+            value <=> SettingsState.probe-timeout-ms;
+            edited => { SettingsState.changed("probe.timeout_ms"); }
+        }
+        Unit { text: @tr("ms"); }
+    }
+    verify-row := SettingRow {
+        icon: CoolIcons.online;
+        title: @tr("Wait for the host to wake up");
+        description: @tr("After a magic packet is sent, the status is checked every 3 seconds until this time has passed.");
+        SpinBox {
+            width: 110px;
+            accessible-label: verify-row.title;
+            accessible-description: verify-row.description;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 10;
+            maximum: 3600;
+            value <=> SettingsState.verify-timeout-secs;
+            edited => { SettingsState.changed("wake.verify_timeout_secs"); }
+        }
+        Unit { text: @tr("seconds"); }
+    }
+
+    SectionHeader { title: @tr("Magic packet"); }
+    port-row := SettingRow {
+        icon: CoolIcons.wake;
+        title: @tr("Default port");
+        description: @tr("Usually 9. Some devices use 7.");
+        // A LineEdit (not a SpinBox): full-width digits typed with the IME on are accepted and
+        // normalized by Rust (Validator), a SpinBox would silently reject them.
+        LineEdit {
+            width: 110px;
+            accessible-label: port-row.title;
+            accessible-description: port-row.description;
+            enabled: ModalGate.overlay-enabled;
+            input-type: InputType.text;
+            text: SettingsState.default-port;
+            edited(text) => {
+                root.port-issue = text == "" ? FieldIssue.required : Validator.check-port(text);
+                if root.port-issue == FieldIssue.none {
+                    let port = Validator.port-value(text);
+                    if port > 0 && port != SettingsState.default-port {
+                        SettingsState.default-port = port;
+                        SettingsState.changed("wake.port");
+                    }
+                }
+            }
+            // Leaving the field with an invalid port shows the saved port again.
+            changed has-focus => {
+                if !self.has-focus {
+                    self.text = SettingsState.default-port;
+                    root.port-issue = FieldIssue.none;
+                }
+            }
+        }
+        Unit { }
+    }
+    if root.port-issue != FieldIssue.none : IssueText {
+        text: Texts.issue(root.port-issue);
+    }
+    repeat-row := SettingRow {
+        title: @tr("Packets per wake");
+        SpinBox {
+            width: 110px;
+            accessible-label: repeat-row.title;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 1;
+            maximum: 10;
+            value <=> SettingsState.repeat;
+            edited => { SettingsState.changed("wake.repeat"); }
+        }
+        Unit { }
+    }
+    interval-row := SettingRow {
+        title: @tr("Interval between packets");
+        SpinBox {
+            width: 110px;
+            accessible-label: interval-row.title;
+            enabled: ModalGate.overlay-enabled;
+            minimum: 0;
+            maximum: 5000;
+            step-size: 50;
+            value <=> SettingsState.interval-ms;
+            edited => { SettingsState.changed("wake.interval_ms"); }
+        }
+        Unit { text: @tr("ms"); }
+    }
+    virtual-row := SettingRow {
+        title: @tr("Also use VPN and virtual adapters");
+        description: @tr("For example WireGuard or Hyper-V adapters. Keep this off so that packets go out through the physical network.");
+        Switch {
+            accessible-label: virtual-row.title;
+            accessible-description: virtual-row.description;
+            enabled: ModalGate.overlay-enabled;
+            checked <=> SettingsState.include-virtual;
+            toggled => { SettingsState.changed("wake.include_virtual"); }
+        }
+    }
+}
+
+component StoragePage inherits VerticalLayout {
+    spacing: 8px;
+    alignment: start;
+    padding-left: 4px;
+    padding-right: 16px;
+    padding-bottom: 8px;
+
+    property <bool> portable-usable: SettingsState.portable-block == PortableBlock.none;
+
+    SectionHeader { title: @tr("Settings location"); }
+    Rectangle {
+        vertical-stretch: 0;
+        background: Theme.card;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 14px;
+            Icon {
+                source: CoolIcons.folder;
+                size: 18px;
+                cross-axis-self-alignment: center;
+            }
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: Texts.storage-mode(AppState.storage-mode);
+                    color: Theme.text;
+                }
+                Text {
+                    text: AppState.storage-path;
+                    font-family: Theme.mono-font;
+                    font-size: Theme.font-small;
+                    color: Theme.text-secondary;
+                    wrap: char-wrap;
+                }
+            }
+            Button {
+                text: @tr("Open folder");
+                icon: CoolIcons.folder;
+                colorize-icon: true;
+                enabled: ModalGate.overlay-enabled;
+                cross-axis-self-alignment: center;
+                clicked => { AppState.open-config-folder(); }
+            }
+        }
+    }
+    portable-row := SettingRow {
+        title: @tr("Portable mode");
+        description: SettingsState.portable-block == PortableBlock.installed ? @tr("Not available in the installed version. Use the ZIP version to carry WoL Manager on a USB drive.")
+            : SettingsState.portable-block == PortableBlock.not-writable ? @tr("Not available: the folder of wol-manager.exe is not writable.")
+            : SettingsState.portable-block == PortableBlock.custom-location ? @tr("Not available: the location is set by --config-dir or WOL_MANAGER_CONFIG_DIR.")
+            : SettingsState.portable-block == PortableBlock.busy ? @tr("Moving the settings…")
+            : @tr("Keep the settings in a “data” folder next to wol-manager.exe.");
+        enabled: root.portable-usable;
+        if SettingsState.portable-block == PortableBlock.busy : BusySpinner {
+            cross-axis-self-alignment: center;
+        }
+        Switch {
+            accessible-label: portable-row.title;
+            accessible-description: portable-row.description;
+            enabled: root.portable-usable && ModalGate.overlay-enabled;
+            checked <=> SettingsState.portable-on;
+            toggled => { SettingsState.portable-toggled(self.checked); }
+        }
+    }
+
+    SectionHeader { title: @tr("Command line (wolm)"); }
+    Rectangle {
+        vertical-stretch: 0;
+        background: Theme.card;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.card-border;
+        HorizontalLayout {
+            padding: 14px;
+            spacing: 14px;
+            Icon {
+                source: CoolIcons.terminal;
+                size: 18px;
+                cross-axis-self-alignment: center;
+            }
+            VerticalLayout {
+                spacing: 4px;
+                alignment: center;
+                horizontal-stretch: 1;
+                Text {
+                    text: SettingsState.cli-path != "" ? SettingsState.cli-path : @tr("wolm.exe was not found next to WoL Manager.");
+                    font-family: SettingsState.cli-path != "" ? Theme.mono-font : "";
+                    font-size: SettingsState.cli-path != "" ? Theme.font-small : Theme.font-body;
+                    color: SettingsState.cli-path != "" ? Theme.text : Theme.text-secondary;
+                    wrap: char-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Example:");
+                        font-size: Theme.font-small;
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    CodeChip { text: "wolm wake NAS"; font-size: 12px; }
+                    CodeChip { text: "wolm --help"; font-size: 12px; }
+                }
+            }
+        }
+    }
+    if SettingsState.path-mode == PathMode.user : path-row := SettingRow {
+        title: @tr("Add wolm to the user PATH");
+        description: SettingsState.path-state == PathState.busy ? @tr("Updating PATH…")
+            : SettingsState.path-state == PathState.registered ? @tr("Registered. Open a new terminal window to use wolm.")
+            : SettingsState.path-state == PathState.not-registered ? @tr("Not registered. wolm can still be run with its full path.")
+            : SettingsState.path-state == PathState.error ? @tr("PATH could not be changed.")
+            : @tr("Checking the PATH…");
+        if SettingsState.path-state == PathState.busy : BusySpinner {
+            cross-axis-self-alignment: center;
+        }
+        Switch {
+            accessible-label: path-row.title;
+            accessible-description: path-row.description;
+            enabled: SettingsState.path-state != PathState.busy && SettingsState.path-state != PathState.unknown && ModalGate.overlay-enabled;
+            checked <=> SettingsState.path-on;
+            toggled => { SettingsState.path-toggled(self.checked); }
+        }
+    }
+    if SettingsState.path-mode == PathMode.machine : SettingRow {
+        title: @tr("System PATH (all users)");
+        description: SettingsState.path-state == PathState.registered ? @tr("Registered by the installer. wolm can be used in any new terminal window.")
+            : SettingsState.path-state == PathState.not-registered ? @tr("Not registered. Run the installer again with “Add the wolm command to PATH” selected.")
+            : SettingsState.path-state == PathState.error ? @tr("The system PATH could not be read.")
+            : @tr("Checking the PATH…");
+        Text {
+            text: SettingsState.path-state == PathState.registered ? @tr("Registered") : SettingsState.path-state == PathState.not-registered ? @tr("Not registered") : "";
+            color: Theme.text-secondary;
+            vertical-alignment: center;
+        }
+    }
+    if SettingsState.path-state == PathState.error && SettingsState.path-error != "" : IssueText {
+        text: SettingsState.path-error;
+    }
+}
+
+component AdvancedPage inherits VerticalLayout {
+    spacing: 8px;
+    alignment: start;
+    padding-left: 4px;
+    padding-right: 16px;
+    padding-bottom: 8px;
+
+    SectionHeader { title: @tr("Display"); }
+    renderer-row := SettingRow {
+        icon: CoolIcons.host;
+        title: @tr("Renderer");
+        description: @tr("Takes effect after WoL Manager is restarted. Choose Software if the window stays blank or flickers.");
+        ComboBox {
+            width: 220px;
+            accessible-label: renderer-row.title;
+            accessible-description: renderer-row.description;
+            enabled: ModalGate.overlay-enabled;
+            model: [@tr("Automatic (recommended)"), @tr("Software")];
+            current-index <=> SettingsState.renderer-index;
+            selected => { SettingsState.changed("gui.renderer"); }
+        }
+    }
+    if SettingsState.renderer-override != "" : HorizontalLayout {
+        spacing: 6px;
+        padding-left: 4px;
+        Icon {
+            source: CoolIcons.info;
+            size: 14px;
+            tint: Theme.warning-fg;
+            cross-axis-self-alignment: start;
+        }
+        HintText {
+            text: @tr("The environment variable SLINT_BACKEND={0} is set and takes precedence over this setting.", SettingsState.renderer-override);
+            horizontal-stretch: 1;
+        }
+    }
+
+    SectionHeader { title: @tr("Troubleshooting"); }
+    log-row := SettingRow {
+        title: @tr("Log files");
+        description: SettingsState.log-dir;
+        description-wrap: TextWrap.char-wrap;
+        Button {
+            text: @tr("Open log folder");
+            accessible-description: log-row.description;
+            icon: CoolIcons.folder;
+            colorize-icon: true;
+            enabled: ModalGate.overlay-enabled;
+            clicked => { SettingsState.open-log-folder(); }
+        }
+    }
+}
+
+export component SettingsOverlay inherits ModalFrame {
+    title: @tr("Settings");
+    title-icon: CoolIcons.settings;
+    card-width: 760px;
+    card-height: 560px;
+
+    property <bool> narrow: self.width < 700px;
+
+    function close() {
+        AppState.overlay = OverlayKind.none;
+        AppState.overlay-closed(OverlayKind.settings);
+    }
+
+    /// Switch to page `p` (clamped) and move the focus to its entry in the page list (the old
+    /// page, and a focused control on it, is destroyed).
+    function go-page(p: int) {
+        SettingsState.page = max(0, min(3, p));
+        if SettingsState.page == 0 {
+            nav0.focus();
+        } else if SettingsState.page == 1 {
+            nav1.focus();
+        } else if SettingsState.page == 2 {
+            nav2.focus();
+        } else {
+            nav3.focus();
+        }
+    }
+
+    close-requested => { root.close(); }
+    init => { root.focus-frame(); }
+
+    // Ctrl+Tab / Ctrl+Shift+Tab: next / previous page from anywhere in the settings.
+    unhandled-key(event) => {
+        if event.modifiers.control && (event.text == Key.Tab || event.text == Key.Backtab) && root.interactive {
+            let backward = event.modifiers.shift || event.text == Key.Backtab;
+            root.go-page(Math.mod(SettingsState.page + (backward ? 3 : 1), 4));
+            return accept;
+        }
+        return reject;
+    }
+
+    HorizontalLayout {
+        vertical-stretch: 1;
+        padding-left: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+
+        VerticalLayout {
+            width: root.narrow ? 150px : 200px;
+            spacing: 2px;
+            alignment: start;
+            padding-top: 4px;
+            nav0 := NavItem {
+                icon: CoolIcons.settings;
+                text: @tr("General");
+                selected: SettingsState.page == 0;
+                enabled: root.interactive;
+                clicked => { root.go-page(0); }
+                move(d) => { root.go-page(0 + d); }
+            }
+            nav1 := NavItem {
+                icon: CoolIcons.wake;
+                text: @tr("Wake & status");
+                selected: SettingsState.page == 1;
+                enabled: root.interactive;
+                clicked => { root.go-page(1); }
+                move(d) => { root.go-page(1 + d); }
+            }
+            nav2 := NavItem {
+                icon: CoolIcons.folder;
+                text: @tr("Storage & command line");
+                selected: SettingsState.page == 2;
+                enabled: root.interactive;
+                clicked => { root.go-page(2); }
+                move(d) => { root.go-page(2 + d); }
+            }
+            nav3 := NavItem {
+                icon: CoolIcons.more;
+                text: @tr("Advanced");
+                selected: SettingsState.page == 3;
+                enabled: root.interactive;
+                clicked => { root.go-page(3); }
+                move(d) => { root.go-page(3 + d); }
+            }
+        }
+
+        // One ScrollView per page (a conditional page inside one ScrollView lost
+        // height-for-width). The content height must be bound explicitly: the Flickable's
+        // automatic content height ignores the wrapped descriptions, so without it the pages
+        // never scrolled.
+        if SettingsState.page == 0 : PageScroll {
+            content-height: max(self.visible-height, page0.preferred-height);
+            page0 := GeneralPage { }
+        }
+        if SettingsState.page == 1 : PageScroll {
+            content-height: max(self.visible-height, page1.preferred-height);
+            page1 := WakePage { }
+        }
+        if SettingsState.page == 2 : PageScroll {
+            content-height: max(self.visible-height, page2.preferred-height);
+            page2 := StoragePage { }
+        }
+        if SettingsState.page == 3 : PageScroll {
+            content-height: max(self.visible-height, page3.preferred-height);
+            page3 := AdvancedPage { }
+        }
+    }
+}

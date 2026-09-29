@@ -1,0 +1,61 @@
+// Visual tokens on top of the fluent Palette. Internal to the UI (not exported to Rust).
+//
+// `Palette.color-scheme` reads the OS scheme while unassigned and the explicit value once
+// AppWindow.set-color-scheme() assigned it, so `dark` is correct in both cases.
+
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    // Status colours (plan: online #22C55E, waking #F59E0B, timeout #EF4444,
+    // checking #60A5FA, offline #9CA3AF; unknown / not monitored = hollow grey ring).
+    out property <color> status-online: #22C55E;
+    out property <color> status-waking: #F59E0B;
+    out property <color> status-timeout: #EF4444;
+    out property <color> status-checking: #60A5FA;
+    out property <color> status-offline: #9CA3AF;
+    out property <color> status-ring: dark ? #8B8B8B : #9CA3AF;
+
+    // Text
+    out property <brush> text: Palette.foreground;
+    out property <brush> text-secondary: dark ? #FFFFFFC4 : #000000A3;
+    out property <brush> text-tertiary: dark ? #FFFFFF8F : #00000080;
+    out property <brush> link: dark ? #60CDFF : #005FB8;
+    out property <brush> link-hover: dark ? #99EBFF : #003E92;
+
+    // Surfaces
+    out property <brush> window: Palette.background;
+    out property <brush> chrome: dark ? #202020 : #F3F3F3;      // toolbar / header / status bar
+    out property <brush> card: dark ? #2B2B2B : #FFFFFF;        // dialogs, toasts, popups
+    out property <brush> card-border: dark ? #FFFFFF1F : #0000001F;
+    out property <brush> divider: dark ? #FFFFFF17 : #00000017;
+    out property <brush> hover: dark ? #FFFFFF0F : #0000000A;
+    out property <brush> pressed: dark ? #FFFFFF0A : #00000006;
+    out property <brush> selected: dark ? #60CDFF24 : #005FB81A;
+    out property <brush> selected-hover: dark ? #60CDFF30 : #005FB824;
+    out property <brush> accent: Palette.accent-background;
+    out property <brush> dim: dark ? #00000099 : #0000005C;
+    out property <brush> subtle-fill: dark ? #FFFFFF0D : #00000008;  // code chips, section fills
+
+    // Severity (Windows InfoBar palette)
+    out property <color> info-fg: dark ? #60CDFF : #005FB8;
+    out property <color> success-fg: dark ? #6CCB5F : #0F7B0F;
+    out property <color> warning-fg: dark ? #FCE100 : #9D5D00;
+    out property <color> error-fg: dark ? #FF99A4 : #C42B1C;
+    out property <color> info-bg: dark ? #1F2A33 : #EFF6FC;
+    out property <color> success-bg: dark ? #393D1B : #DFF6DD;
+    out property <color> warning-bg: dark ? #433519 : #FFF4CE;
+    out property <color> error-bg: dark ? #442726 : #FDE7E9;
+    out property <color> error-text: dark ? #FF99A4 : #C42B1C;  // inline field messages
+
+    // Metrics
+    out property <length> row-height: 48px;
+    out property <length> radius: 6px;
+    out property <length> radius-large: 8px;
+    out property <length> font-small: 12px;
+    out property <length> font-body: 14px;
+    out property <length> font-title: 20px;
+    out property <length> font-subtitle: 16px;
+    out property <string> mono-font: "Consolas";
+}

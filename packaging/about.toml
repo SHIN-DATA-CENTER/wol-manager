@@ -1,0 +1,40 @@
+# cargo-about 0.9.2 configuration for THIRD-PARTY-NOTICES.txt (used by scripts/build.ps1):
+#   cargo about generate --workspace --locked --fail -c packaging/about.toml packaging/about.hbs
+#
+# Install: cargo install cargo-about --locked --version 0.9.2 --features cli
+# (0.9.x only builds the binary with the "cli" feature.)
+
+# Licenses we accept for code compiled into wol-manager.exe / wolm.exe. When a crate offers a
+# choice ("MIT OR Apache-2.0"), the first accepted license in this order is selected.
+#
+# GPL-3.0-only is deliberately NOT accepted: Slint is licensed
+# "GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0" and must
+# resolve to the Royalty-free license (AboutSlint is shown in the About dialog).
+#
+# The Slint crates ship the Royalty-free text only as LICENSES/*.md, which cargo-about cannot
+# identify, so it emits "has no license file" warnings for them and lists them without a text.
+# That is expected: the verbatim license text is always taken from packaging/notices/slint.txt,
+# and about.hbs lists every crate together with its license expression.
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "OFL-1.1",
+    "LicenseRef-Slint-Royalty-free-2.0",
+]
+
+# Only what is linked into the Windows x64 binaries.
+targets = ["x86_64-pc-windows-msvc"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# Skip our own workspace crates (publish = false); WoL Manager's license is LICENSE.txt.
+private = { ignore = true }

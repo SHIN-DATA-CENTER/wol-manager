@@ -1,0 +1,209 @@
+# Build, test and package WoL Manager on Windows; publish a GitHub release for v* tags.
+#
+# The coolicons icons (CC BY 4.0) are downloaded at build time and never committed
+# (scripts/check-repo-hygiene.ps1 runs first). The packaging scripts are written for
+# Windows PowerShell 5.1 and run with `shell: powershell`; other steps use pwsh.
+
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # RUSTFLAGS must stay unset: it would replace the rustflags in .cargo/config.toml
+  # (+crt-static, /STACK). scripts/build.ps1 refuses to run when it is set.
+
+jobs:
+  build:
+    name: Build, test and package
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Repository hygiene (no coolicons or derived files, no ExecToLog)
+        shell: powershell
+        run: ./scripts/check-repo-hygiene.ps1
+
+      - name: Restore the coolicons download
+        uses: actions/cache@v6
+        with:
+          path: .cache/coolicons.v4.1.zip
+          # The zip is verified against a pinned SHA-256 by fetch-coolicons.ps1.
+          key: coolicons-v4.1-5311b1b44e345b19
+
+      - name: Fetch coolicons (build time only)
+        shell: powershell
+        run: ./scripts/fetch-coolicons.ps1
+
+      - name: Repository hygiene against the real icon data (paths, file hashes, base64)
+        shell: powershell
+        run: ./scripts/check-repo-hygiene.ps1 -CooliconsDir coolicons.v4.1
+
+      - name: Install NSIS
+        run: |
+          choco install nsis --version=3.13.0 -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::warning::NSIS 3.13.0 could not be installed; falling back to 3.12.0 (the installer only uses nsExec::ExecToStack).'
+            choco install nsis --version=3.12.0 -y --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          if (-not (Test-Path -LiteralPath (Join-Path $nsis 'makensis.exe'))) { throw "makensis.exe not found in $nsis" }
+          # pwsh writes UTF-8 without BOM, as GITHUB_PATH requires.
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $nsis
+          & (Join-Path $nsis 'makensis.exe') /VERSION
+
+      - name: Install the Rust toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+
+      - name: Read the version
+        id: version
+        run: |
+          $meta = cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $versions = @($meta.packages | ForEach-Object { $_.version } | Sort-Object -Unique)
+          if ($versions.Count -ne 1) { throw "Workspace members have different versions: $($versions -join ', ')" }
+          "version=$($versions[0])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "version $($versions[0])"
+
+      - name: Cache cargo registry, target and installed tools
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-about 0.9.2
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-about@0.9.2
+          fallback: none
+
+      - name: Install slint-tr-extractor 1.18.1
+        # Not provided by taiki-e/install-action; ~/.cargo/bin is cached by rust-cache.
+        run: |
+          cargo install slint-tr-extractor --version 1.18.1 --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          slint-tr-extractor --version
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: Dependency checks (wolm without Slint, Slint versions, winit)
+        run: |
+          $tree = cargo tree -p wolm -e normal,build --prefix none --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $slint = @($tree | Select-String -Pattern '^(i-)?slint')
+          if ($slint.Count -gt 0) { $slint | ForEach-Object { Write-Host $_ }; throw 'wolm must not depend on Slint' }
+
+          $meta = cargo metadata --format-version 1 --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sv = @($meta.packages | Where-Object { $_.name -in @('slint', 'slint-build') } | ForEach-Object { $_.version } | Sort-Object -Unique)
+          if ($sv.Count -ne 1) { throw "slint and slint-build resolve to different versions: $($sv -join ', ')" }
+          Write-Host "slint / slint-build $($sv[0])"
+          foreach ($w in @($meta.packages | Where-Object { $_.name -eq 'winit' })) {
+            if ([version](($w.version -split '[-+]')[0]) -lt [version]'0.30.13') { throw "winit $($w.version) < 0.30.13 (IME fixes)" }
+            Write-Host "winit $($w.version)"
+          }
+
+      - name: Translations complete (ja)
+        shell: powershell
+        run: ./scripts/check-translations.ps1
+
+      - name: Build the ZIP and the installer (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./scripts/build.ps1
+
+      - name: Installer smoke test
+        shell: powershell
+        run: ./scripts/smoke-installer.ps1
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: wol-manager-${{ steps.version.outputs.version }}
+          path: |
+            dist/*.zip
+            dist/*-setup-x64.exe
+            dist/*.sha256
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Upload debug symbols (not shipped)
+        uses: actions/upload-artifact@v7
+        with:
+          name: wol-manager-${{ steps.version.outputs.version }}-pdb
+          path: dist/symbols/*.pdb
+          if-no-files-found: warn
+
+  release:
+    name: GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Tag must match the Cargo version
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match the Cargo version v${VERSION}"
+            exit 1
+          fi
+
+      - name: Download the artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: wol-manager-${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          flags=()
+          case "${VERSION}" in *-*) flags+=(--prerelease) ;; esac
+          sed "s/<version>/${VERSION}/g" packaging/release-notes.md > "${RUNNER_TEMP}/release-notes.md"
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "WoL Manager ${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md" \
+            --generate-notes \
+            --verify-tag \
+            "${flags[@]}"

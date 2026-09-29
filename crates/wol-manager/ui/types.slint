@@ -1,0 +1,151 @@
+// Data types shared between the Rust side and the Slint UI.
+//
+// Every enum/struct here is re-exported from app.slint so that slint-build generates a Rust
+// type for it (Rust names: enums -> PascalCase variants, struct fields -> snake_case).
+// The first variant of every enum is its Rust `Default`.
+
+// ---------------------------------------------------------------------------------------------
+// Host list
+
+/// Reachability state of a host. Always rendered with text (never colour only).
+export enum HostStatus {
+    unknown,        // not checked yet (hollow grey dot)
+    checking,       // probe in flight (blue, pulsing)
+    online,         // last probe answered (green)
+    offline,        // last probe did not answer (grey)
+    waking,         // magic packet sent, waiting for the host to come up (amber, pulsing)
+    timeout,        // waking gave up after verify_timeout_secs (red); kept until next answer / wake
+    not-monitored,  // probe = none or no address (hollow grey dot)
+}
+
+/// How the last successful probe reached the host (shown in the status tooltip).
+export enum ProbeVia { none, icmp, tcp }
+
+/// One row of the host list. Identified by `id` everywhere, never by row index.
+export struct HostRow {
+    id: string,         // host UUID (string form)
+    name: string,
+    mac: string,        // display form "AA:BB:CC:DD:EE:FF"
+    address: string,    // IPv4 or host name as entered; "" = none
+    group: string,      // "" = no group
+    notes: string,      // single line is shown; newlines are fine but only the first line is visible
+    status: HostStatus,
+    via: ProbeVia,      // meaningful when status == online
+    rtt-ms: int,        // round-trip time of the last successful probe, -1 = unknown
+}
+
+/// Entry of the tray "Wake host" submenu.
+export struct TrayHost {
+    id: string,
+    name: string,
+    status: HostStatus,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Notifications
+
+export enum ToastKind { info, success, warning, error }
+
+/// A transient notification (bottom-right). Text is produced by Rust (wol_core::i18n::Msg).
+export struct Toast {
+    id: int,         // unique, used by AppState.dismiss-toast(id)
+    kind: ToastKind,
+    text: string,    // main line
+    detail: string,  // optional second line (e.g. OS error), "" = none
+}
+
+/// Persistent problems shown in the InfoBar area at the top of the main window.
+export enum NoticeKind {
+    config-load-failed,       // config.toml could not be parsed; nothing is written until fixed
+    config-read-only,         // the storage folder is not writable; changes cannot be saved
+    config-newer-version,     // schema_version is newer than supported -> opened read-only
+    portable-marker-ignored,  // installed copy: wol-manager.portable next to the exe is ignored
+    tray-unavailable,         // the notification-area icon could not be created
+}
+
+export struct Notice {
+    kind: NoticeKind,
+    detail: string,  // data shown under the message (parse error, path, OS error); may be ""
+}
+
+// ---------------------------------------------------------------------------------------------
+// Overlays and dialogs
+
+/// Which in-window overlay is open. Confirm dialogs are a separate layer (AppState.confirm-open)
+/// because they can appear on top of the editor or the settings overlay.
+export enum OverlayKind { none, editor, settings, about }
+
+export enum ConfirmKind {
+    delete-host,         // host-id + subject(name)
+    wake-all,            // count = number of hosts that will be woken
+    portable-enable,     // path = future data folder; option = "copy current settings" checkbox
+    portable-disable,    // path = AppData folder that will be used again
+    portable-overwrite,  // path = existing data folder; accept = overwrite, alternate = use existing
+    save-as-new,         // host-id + subject(name): host was deleted externally while editing
+}
+
+export struct ConfirmRequest {
+    kind: ConfirmKind,
+    host-id: string,
+    subject: string,  // usually the host name (data)
+    count: int,
+    path: string,
+    option: bool,     // checkbox state (portable-enable: copy current settings), UI-editable
+}
+
+// ---------------------------------------------------------------------------------------------
+// Host editor
+
+export enum EditorMode { add, edit, duplicate }
+
+/// Result of a field check. Mirrors wol_core::model::FieldIssue one-to-one (plus `none`).
+export enum FieldIssue {
+    none,
+    required,
+    invalid-mac,
+    mac-not-unicast,
+    invalid-address,
+    invalid-port,
+    invalid-port-list,
+    too-many-ports,
+    invalid-secure-on,
+    invalid-target,
+    duplicate-name,
+    name-looks-like-mac,
+    name-too-long,
+    ime-kana,
+}
+
+/// State of the "Get from IP" (ARP) lookup in the editor.
+export enum ArpStatus { idle, busy, found, not-found, not-local, failed }
+
+/// A network adapter that a host can be pinned to.
+export struct InterfaceOption {
+    id: string,      // adapter GUID (stored in config)
+    label: string,   // adapter name, e.g. "Ethernet"
+    detail: string,  // e.g. "192.168.1.20/24"
+}
+
+// ---------------------------------------------------------------------------------------------
+// Settings / storage
+
+/// Where settings are stored. `custom` = --config-dir or WOL_MANAGER_CONFIG_DIR.
+export enum StorageMode { standard, portable, custom }
+
+/// Why the portable switch is disabled.
+export enum PortableBlock {
+    none,             // switch is usable
+    installed,        // installed copy (uninstall.exe present)
+    not-writable,     // the folder next to the exe is not writable
+    custom-location,  // --config-dir / WOL_MANAGER_CONFIG_DIR overrides the location
+    busy,             // a migration is running
+}
+
+/// Which PATH control the "Storage & command line" page shows.
+export enum PathMode {
+    user,         // portable or per-user install: switch edits the user PATH
+    machine,      // all-users install: system PATH status is shown read-only
+    unavailable,  // wolm.exe was not found next to the app
+}
+
+export enum PathState { unknown, busy, registered, not-registered, error }

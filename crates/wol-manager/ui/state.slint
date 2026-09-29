@@ -1,0 +1,370 @@
+// Globals shared between Rust and the UI. See gui-slint-contract.md for who sets what.
+//
+// Conventions
+// - `in` properties are written by Rust only; `in-out` properties are also written by the UI.
+// - Every host is addressed by its id (string). Row indices are never passed to Rust.
+// - Every user-visible string of the UI lives in @tr(); Rust passes data and enums only
+//   (exceptions: toast text, group names, OS error details, paths).
+
+import {
+    HostRow, HostStatus, ProbeVia, Toast, Notice, NoticeKind, OverlayKind, ConfirmKind,
+    ConfirmRequest, EditorMode, FieldIssue, ArpStatus, InterfaceOption, StorageMode,
+    PortableBlock, PathMode, PathState,
+} from "types.slint";
+
+// =============================================================================================
+// Main window state
+// =============================================================================================
+export global AppState {
+    // ---- data pushed by Rust -----------------------------------------------------------------
+    /// Visible (filtered) host rows, in display order. Usually a FilterModel over the full list.
+    in property <[HostRow]> hosts;
+    /// Number of hosts before filtering (0 => empty state with "Add host").
+    in property <int> host-count;
+    /// Number of hosts whose status is online (all hosts, not only visible ones).
+    in property <int> online-count;
+    /// Distinct group names, sorted (for the group filter, the editor suggestions and View > Group).
+    in property <[string]> groups;
+    /// Toasts, newest last. The UI shows at most the newest 3 (bottom-right), or the newest 2
+    /// inside the topmost dialog while an overlay / confirm dialog is open. Rust caps the list
+    /// at 3 and expires the toasts (4 s / 8 s).
+    in property <[Toast]> toasts;
+    /// InfoBar notices, shown top to bottom.
+    in property <[Notice]> notices;
+    in property <StorageMode> storage-mode;
+    /// Folder that holds config.toml.
+    in property <string> storage-path;
+    /// Local time of the last completed status round, already formatted (e.g. "14:03:12"); "" = never.
+    in property <string> last-check;
+    /// True while a status round (F5 or periodic) is running.
+    in property <bool> checking;
+    /// Runs the status-dot pulse timer. Rust keeps it true only while the window is visible and
+    /// at least one host is checking or waking (otherwise the timer would wake the event loop
+    /// forever, also while the window is hidden in the notification area).
+    in property <bool> animating;
+    /// True when periodic status checks are off (gui.poll_interval_secs = 0).
+    in property <bool> auto-check-off;
+    /// UI language is Japanese (selects the default font family). Set together with
+    /// slint::select_bundled_translation("ja" | "").
+    in property <bool> lang-ja;
+    /// Portable mode: adds " (portable)" to the window title.
+    in property <bool> portable;
+
+    // ---- UI state (UI and Rust) ----------------------------------------------------------------
+    /// Search box text. Written by the UI; Rust may clear it.
+    in-out property <string> search-text;
+    /// Selected group filter, "" = all groups.
+    in-out property <string> group-filter;
+    /// Id of the selected host, "" = none.
+    in-out property <string> selected-id;
+    /// Index of `selected-id` inside `hosts`, -1 = none. Maintained by the UI on click / keyboard;
+    /// Rust must re-sync it (index of selected-id, or -1 and clear selected-id) whenever it
+    /// replaces or re-filters `hosts`.
+    in-out property <int> selected-row: -1;
+    /// Open overlay. Rust sets it to open one (after filling its state); the UI resets it to
+    /// `none` when the user closes it and then invokes overlay-closed(kind).
+    in-out property <OverlayKind> overlay: OverlayKind.none;
+    /// Confirm dialog (layer above every overlay). Rust fills `confirm` and sets confirm-open;
+    /// the UI clears confirm-open before invoking confirm-accepted / confirm-cancelled.
+    in-out property <bool> confirm-open;
+    in-out property <ConfirmRequest> confirm;
+
+    // ---- host actions (all by id) ----------------------------------------------------------------
+    callback wake(id: string);
+    /// Wake all hosts currently visible (after search / group filter). Rust shows ConfirmKind.wake-all.
+    callback wake-all-visible();
+    /// F5: probe all hosts now.
+    callback refresh();
+    /// Open the editor for a new host (Rust fills EditorState, then sets overlay = editor).
+    callback add-host();
+    callback edit-host(id: string);
+    /// Open the editor pre-filled as a copy (EditorMode.duplicate). Nothing is saved until Save.
+    callback duplicate-host(id: string);
+    /// Ask for deletion. Rust shows ConfirmKind.delete-host.
+    callback delete-host(id: string);
+    callback copy-mac(id: string);
+    callback copy-address(id: string);
+
+    // ---- list filtering ------------------------------------------------------------------------------
+    /// Search text changed (search-text already holds the new value).
+    callback search-changed(text: string);
+    /// Group filter changed (group-filter already holds the new value, "" = all).
+    callback group-filter-changed(group: string);
+
+    // ---- window / navigation -----------------------------------------------------------------------
+    /// Fill SettingsState (refresh PATH / portable status) and set overlay = settings.
+    callback open-settings();
+    /// Set overlay = about.
+    callback open-about();
+    callback open-config-folder();
+    /// Open an http(s) URL in the default browser.
+    callback open-url(url: string);
+    /// File > Close window (Ctrl+W): hide to tray if the tray is available, else quit.
+    callback close-window();
+    /// File > Exit (Ctrl+Q): always quits (flush, save geometry).
+    callback quit();
+    /// The window was minimized by the user (for "minimize to tray").
+    callback window-minimized();
+    /// The user closed an overlay (Esc, X, Cancel, Close). `overlay` is already none.
+    callback overlay-closed(kind: OverlayKind);
+    /// Confirm dialog result. `alternate` = the secondary action (portable-overwrite: keep existing
+    /// data). request.option carries the checkbox state.
+    callback confirm-accepted(request: ConfirmRequest, alternate: bool);
+    callback confirm-cancelled(request: ConfirmRequest);
+    callback dismiss-toast(id: int);
+    /// Action button of a notice (config-load-failed: Reload).
+    callback notice-action(kind: NoticeKind);
+    /// Close button of a notice.
+    callback dismiss-notice(kind: NoticeKind);
+}
+
+// =============================================================================================
+// Host editor overlay
+// =============================================================================================
+export global EditorState {
+    in-out property <EditorMode> mode: EditorMode.add;
+    /// Id of the edited host ("" for add / duplicate).
+    in-out property <string> host-id;
+
+    // ---- basic fields (text as typed; Rust normalizes when saving) -------------------------------
+    in-out property <string> name;
+    in-out property <string> mac;
+    in-out property <string> address;
+    in-out property <string> group;
+    in-out property <string> notes;
+
+    // ---- advanced fields ------------------------------------------------------------------------------
+    /// host.broadcast: also send to all selected interfaces' broadcast addresses.
+    in-out property <bool> broadcast: true;
+    /// Additional targets, one per line, "host" or "host:port".
+    in-out property <string> targets;
+    /// Port override; "" = default (SettingsState.default-port).
+    in-out property <string> port;
+    /// Interface pinning: -1 = automatic, -2 = keep the host's existing pinning unchanged,
+    /// >= 0 = index into `interfaces` (pin exactly that adapter).
+    /// Rust sets -2 for every existing pinning that is not exactly one present adapter (several
+    /// adapters, or any pinned adapter missing), so that saving an unrelated change keeps it.
+    in-out property <int> interface-index: -1;
+    in property <[InterfaceOption]> interfaces;
+    /// Number of adapters the host is pinned to (0 = automatic).
+    in property <int> interface-pinned-count;
+    /// At least one pinned adapter is not present on this PC. Together with
+    /// interface-pinned-count > 1 this makes the "keep current pinning" entry available.
+    in property <bool> interface-missing;
+    /// SecureOn password (6 bytes hex). Stored as plain text; the UI says so.
+    in-out property <string> secureon;
+    /// Probe method: 0 = settings default, 1 = automatic (Ping then TCP), 2 = Ping (ICMP), 3 = TCP,
+    /// 4 = don't check.
+    in-out property <int> probe-index: 0;
+    /// TCP ports, comma separated ("" = settings default).
+    in-out property <string> tcp-ports;
+    /// Advanced section expanded. Rust may open it when an advanced field is set or invalid.
+    in-out property <bool> advanced-open;
+
+    // ---- inline issues -------------------------------------------------------------------------------
+    // The UI recomputes these through Validator on every edit; Rust resets them when opening the
+    // editor and sets them from HostDraft::build errors when Save fails.
+    in-out property <FieldIssue> name-issue;
+    in-out property <FieldIssue> mac-issue;
+    in-out property <FieldIssue> address-issue;
+    in-out property <FieldIssue> targets-issue;
+    in-out property <FieldIssue> port-issue;
+    in-out property <FieldIssue> secureon-issue;
+    in-out property <FieldIssue> tcp-ports-issue;
+
+    // ---- ARP lookup ----------------------------------------------------------------------------------
+    in property <ArpStatus> arp-status: ArpStatus.idle;
+    /// True while Rust saves (store thread); disables Save.
+    in property <bool> saving;
+
+    /// Validate + save. On success Rust sets AppState.overlay = none; on failure it sets the
+    /// *-issue properties (and advanced-open if needed) and keeps the editor open.
+    callback save();
+    /// "Get from IP": ARP lookup of `address` on a worker. Rust sets arp-status busy -> result and,
+    /// when found, writes `mac` (and clears mac-issue).
+    callback lookup-mac(address: string);
+}
+
+// =============================================================================================
+// Input validation (pure callbacks implemented by Rust with the wol-core parsers)
+// =============================================================================================
+export global Validator {
+    /// Required, length, "looks like a MAC", uniqueness (ignoring the host `host-id`).
+    pure callback check-name(name: string, host-id: string) -> FieldIssue;
+    /// Required + MAC syntax (also full-width / IME kana).
+    pure callback check-mac(text: string) -> FieldIssue;
+    /// "" is fine; otherwise IPv4 or host name.
+    pure callback check-address(text: string) -> FieldIssue;
+    /// "" is fine; otherwise 1..=65535.
+    pure callback check-port(text: string) -> FieldIssue;
+    /// The port as a number after normalization (full-width digits etc.), 0 if `text` is not a
+    /// valid port. Used by the settings "Default port" field (a LineEdit, see the contract).
+    pure callback port-value(text: string) -> int;
+    /// One target per line: host or host:port.
+    pure callback check-targets(text: string) -> FieldIssue;
+    /// "" is fine; otherwise 6 bytes hex.
+    pure callback check-secureon(text: string) -> FieldIssue;
+    /// "" is fine; otherwise comma-separated ports.
+    pure callback check-tcp-ports(text: string) -> FieldIssue;
+    /// Enables "Get from IP" (ARP works for IPv4 only).
+    pure callback is-ipv4(text: string) -> bool;
+}
+
+// =============================================================================================
+// Settings overlay. Every change is saved immediately: the UI updates the property, then invokes
+// changed(key) with the config key (same names as `wolm config` / Settings::KEYS).
+// =============================================================================================
+export global SettingsState {
+    /// Page: 0 = General, 1 = Wake & status, 2 = Storage & command line, 3 = Advanced.
+    in-out property <int> page: 0;
+
+    // ---- General ------------------------------------------------------------------------------------
+    /// key "language": 0 = auto, 1 = ja, 2 = en
+    in-out property <int> language-index: 0;
+    /// key "gui.theme": 0 = system, 1 = light, 2 = dark
+    in-out property <int> theme-index: 0;
+    in-out property <bool> show-tray: true;          // key "gui.show_tray"
+    in-out property <bool> close-to-tray;            // key "gui.close_to_tray"
+    in-out property <bool> minimize-to-tray;         // key "gui.minimize_to_tray"
+    in-out property <bool> start-in-tray;            // key "gui.start_in_tray"
+    /// False when the tray icon could not be created (tray options are then disabled).
+    in property <bool> tray-available: true;
+
+    // ---- Wake & status -------------------------------------------------------------------------------
+    /// key "gui.poll_interval_secs": 0 = off, 1 = 10 s, 2 = 30 s, 3 = 60 s, 4 = 300 s,
+    /// 5 = custom value from the config file (poll-custom-secs), shown but never rewritten.
+    in-out property <int> poll-index: 2;
+    in property <int> poll-custom-secs;
+    in-out property <int> verify-timeout-secs: 120;  // key "wake.verify_timeout_secs" (10..=3600)
+    /// key "probe.method": 0 = auto (ping, then TCP), 1 = icmp, 2 = tcp, 3 = none.
+    /// Also shown as the "Default (…)" entry of the host editor's status check.
+    in-out property <int> probe-method-index: 0;
+    /// key "probe.tcp_ports", display form "3389, 445, 22" ("" = none). The UI writes it only
+    /// when Validator.check-tcp-ports accepts the text. Also the editor's TCP ports placeholder.
+    in-out property <string> probe-tcp-ports: "3389, 445, 22";
+    in-out property <int> probe-timeout-ms: 1000;    // key "probe.timeout_ms" (100..=30000)
+    /// key "wake.port" (1..=65535); also the editor's port placeholder. Edited in a LineEdit
+    /// (full-width digits allowed): the UI writes it only when Validator.check-port accepts the
+    /// text, using Validator.port-value.
+    in-out property <int> default-port: 9;
+    in-out property <int> repeat: 3;                 // key "wake.repeat" (1..=10)
+    in-out property <int> interval-ms: 100;          // key "wake.interval_ms" (0..=5000)
+    in-out property <bool> include-virtual;          // key "wake.include_virtual"
+
+    // ---- Storage & command line (storage mode / path: AppState.storage-mode / storage-path) -------
+    /// Portable switch state (two-way). The UI flips it and invokes portable-toggled(on); Rust
+    /// shows the confirm dialog and sets it back if the user cancels or the switch fails.
+    in-out property <bool> portable-on;
+    in property <PortableBlock> portable-block;
+    /// Full path of wolm.exe ("" when not found).
+    in property <string> cli-path;
+    in property <PathMode> path-mode: PathMode.user;
+    /// PATH switch state (two-way, PathMode.user only). Same revert rule as portable-on.
+    in-out property <bool> path-on;
+    in property <PathState> path-state: PathState.unknown;
+    /// OS error text when path-state == error.
+    in property <string> path-error;
+
+    // ---- Advanced ------------------------------------------------------------------------------------
+    /// key "gui.renderer": 0 = auto, 1 = software. Takes effect after restart.
+    in-out property <int> renderer-index: 0;
+    /// Value of the SLINT_BACKEND environment variable ("" = not set); it overrides the setting.
+    in property <string> renderer-override;
+    /// Folder of gui.log.
+    in property <string> log-dir;
+
+    callback changed(key: string);
+    callback portable-toggled(on: bool);
+    callback path-toggled(on: bool);
+    callback open-log-folder();
+}
+
+// =============================================================================================
+// About overlay
+// =============================================================================================
+export global AboutInfo {
+    /// env!("CARGO_PKG_VERSION")
+    in property <string> version;
+    /// THIRD-PARTY-NOTICES.txt exists next to the exe.
+    in property <bool> notices-available;
+    in property <string> website-url: "https://github.com/SHIN-DATA-CENTER/wol-manager";
+    in property <string> copyright: "© 2026 SHIN DATA CENTER";
+    /// Open THIRD-PARTY-NOTICES.txt.
+    callback open-notices();
+}
+
+// =============================================================================================
+// Keyboard containment of the in-window dialogs (internal helper, not exported to Rust)
+// =============================================================================================
+export global ModalGate {
+    /// False while the confirm dialog is open. Every control of the editor / settings / about
+    /// overlays binds `enabled` to it, so that Tab can't reach them behind the confirm dialog
+    /// (the main view is likewise disabled through MainView.interactive).
+    out property <bool> overlay-enabled: !AppState.confirm-open;
+}
+
+// =============================================================================================
+// Translated texts for enums (internal helper, not exported to Rust)
+// =============================================================================================
+export global Texts {
+    /// SettingsState.probe-method-index -> text.
+    public pure function probe-method(index: int) -> string {
+        if index == 1 { return @tr("Ping (ICMP)"); }
+        if index == 2 { return @tr("TCP port"); }
+        if index == 3 { return @tr("Don't check"); }
+        return @tr("Automatic (ping, then TCP)");
+    }
+
+    public pure function status(s: HostStatus) -> string {
+        if s == HostStatus.checking { return @tr("Checking…"); }
+        if s == HostStatus.online { return @tr("Online"); }
+        if s == HostStatus.offline { return @tr("Offline"); }
+        if s == HostStatus.waking { return @tr("Waking…"); }
+        if s == HostStatus.timeout { return @tr("No response"); }
+        if s == HostStatus.not-monitored { return @tr("Not monitored"); }
+        return @tr("Unknown");
+    }
+
+    public pure function status-detail(h: HostRow) -> string {
+        if h.status == HostStatus.online {
+            if h.via == ProbeVia.icmp {
+                return h.rtt-ms >= 0 ? @tr("Answered ping in {0} ms", h.rtt-ms) : @tr("Answered ping");
+            }
+            if h.via == ProbeVia.tcp {
+                return h.rtt-ms >= 0 ? @tr("Answered on a TCP port in {0} ms", h.rtt-ms) : @tr("Answered on a TCP port");
+            }
+            return @tr("The host answered the last check.");
+        }
+        if h.status == HostStatus.offline { return @tr("The host did not answer the last check."); }
+        if h.status == HostStatus.waking { return @tr("Magic packet sent. Waiting for the host to answer…"); }
+        if h.status == HostStatus.timeout { return @tr("The host did not answer after the magic packet was sent."); }
+        if h.status == HostStatus.checking { return @tr("Checking whether the host answers…"); }
+        if h.status == HostStatus.not-monitored {
+            return h.address == "" ? @tr("No address is set, so the status can't be checked.") : @tr("Status checks are turned off for this host.");
+        }
+        return @tr("Not checked yet.");
+    }
+
+    public pure function issue(i: FieldIssue) -> string {
+        if i == FieldIssue.required { return @tr("Required."); }
+        if i == FieldIssue.invalid-mac { return @tr("Enter a MAC address such as AA:BB:CC:DD:EE:FF."); }
+        if i == FieldIssue.mac-not-unicast { return @tr("Multicast, broadcast and all-zero addresses can't be woken. The first byte must be even."); }
+        if i == FieldIssue.invalid-address { return @tr("Enter an IPv4 address or a host name."); }
+        if i == FieldIssue.invalid-port { return @tr("Enter a port number from 1 to 65535."); }
+        if i == FieldIssue.invalid-port-list { return @tr("Enter port numbers from 1 to 65535, separated by commas."); }
+        if i == FieldIssue.too-many-ports { return @tr("Enter up to 16 ports."); }
+        if i == FieldIssue.invalid-secure-on { return @tr("Enter 6 bytes in hex, such as 01:23:45:67:89:AB."); }
+        if i == FieldIssue.invalid-target { return @tr("Enter one target per line as host or host:port."); }
+        if i == FieldIssue.duplicate-name { return @tr("A host with this name already exists."); }
+        if i == FieldIssue.name-looks-like-mac { return @tr("The name can't be a MAC address."); }
+        if i == FieldIssue.name-too-long { return @tr("Use 64 characters or fewer."); }
+        if i == FieldIssue.ime-kana { return @tr("Contains kana. Turn off the IME and type it again."); }
+        return "";
+    }
+
+    public pure function storage-mode(m: StorageMode) -> string {
+        if m == StorageMode.portable { return @tr("Portable"); }
+        if m == StorageMode.custom { return @tr("Custom location"); }
+        return @tr("Standard (AppData)");
+    }
+}

@@ -1,0 +1,238 @@
+// WoL Manager GUI entry point (compiled by build.rs with the fluent style).
+// Exports: AppWindow, AppTray, every struct/enum in types.slint and the globals AppState,
+// EditorState, Validator, SettingsState, AboutInfo. The contract for the Rust side is in
+// gui-slint-contract.md.
+
+import { Palette } from "std-widgets.slint";
+import { AppArt } from "@coolicons";
+import { OverlayKind } from "types.slint";
+import { Theme } from "theme.slint";
+import { AppState, SettingsState, AboutInfo } from "state.slint";
+import { MainView } from "main-view.slint";
+import { ToastStack } from "toasts.slint";
+import { HostEditorOverlay } from "overlays/host-editor.slint";
+import { SettingsOverlay } from "overlays/settings.slint";
+import { AboutOverlay } from "overlays/about.slint";
+import { ConfirmOverlay } from "overlays/confirm.slint";
+
+export {
+    HostStatus, ProbeVia, HostRow, TrayHost, ToastKind, Toast, NoticeKind, Notice, OverlayKind,
+    ConfirmKind, ConfirmRequest, EditorMode, FieldIssue, ArpStatus, InterfaceOption, StorageMode,
+    PortableBlock, PathMode, PathState,
+} from "types.slint";
+export { AppState, EditorState, Validator, SettingsState, AboutInfo } from "state.slint";
+export { AppTray } from "tray.slint";
+
+export component AppWindow inherits Window {
+    title: AppState.portable ? @tr("WoL Manager (portable)") : "WoL Manager";
+    icon: AppArt.app-256;
+    preferred-width: 880px;
+    preferred-height: 560px;
+    min-width: 600px;
+    min-height: 380px;
+    default-font-family: AppState.lang-ja ? "Yu Gothic UI" : "Segoe UI";
+    default-font-size: 14px;
+    background: Theme.window;
+
+    property <bool> idle: AppState.overlay == OverlayKind.none && !AppState.confirm-open;
+    property <bool> has-selection: AppState.selected-id != "";
+    property <bool> selection-has-address: AppState.selected-row >= 0
+        && AppState.selected-row < AppState.hosts.length
+        && AppState.hosts[AppState.selected-row].id == AppState.selected-id
+        && AppState.hosts[AppState.selected-row].address != "";
+
+    /// Force a colour scheme. Call ONLY for an explicit light/dark choice (or, after switching
+    /// back to "system" at runtime, with the current OS value): assigning Palette.color-scheme
+    /// replaces the OS-following default binding.
+    public function set-color-scheme(dark: bool) {
+        Palette.color-scheme = dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    /// Focus the search box (View > Search, Ctrl+F).
+    public function focus-search() {
+        main.focus-search();
+    }
+
+    /// Focus the host list (e.g. after the window is shown).
+    public function focus-list() {
+        main.focus-list();
+    }
+
+    changed minimized => {
+        if self.minimized {
+            AppState.window-minimized();
+        }
+    }
+
+    // Give the keyboard focus back to the host list when the last overlay closes.
+    changed idle => {
+        if self.idle {
+            main.focus-list();
+        }
+    }
+
+    MenuBar {
+        Menu {
+            title: @tr("File");
+            MenuItem {
+                title: @tr("New host…");
+                shortcut: @keys(Control + N);
+                enabled: root.idle;
+                activated => { AppState.add-host(); }
+            }
+            MenuItem {
+                title: @tr("Settings…");
+                shortcut: @keys(Control + ",");
+                enabled: root.idle;
+                activated => { AppState.open-settings(); }
+            }
+            MenuItem {
+                title: @tr("Open settings folder");
+                activated => { AppState.open-config-folder(); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Close window");
+                shortcut: @keys(Control + W);
+                activated => { AppState.close-window(); }
+            }
+            MenuItem {
+                title: @tr("Exit");
+                shortcut: @keys(Control + Q);
+                activated => { AppState.quit(); }
+            }
+        }
+        Menu {
+            title: @tr("Host");
+            MenuItem {
+                title: @tr("Wake");
+                shortcut: @keys(Control + Return);
+                enabled: root.idle && root.has-selection;
+                activated => { AppState.wake(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Edit…");
+                enabled: root.idle && root.has-selection;
+                activated => { AppState.edit-host(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Duplicate");
+                shortcut: @keys(Control + D);
+                enabled: root.idle && root.has-selection;
+                activated => { AppState.duplicate-host(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Copy MAC address");
+                enabled: root.idle && root.has-selection;
+                activated => { AppState.copy-mac(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Copy address");
+                enabled: root.idle && root.selection-has-address;
+                activated => { AppState.copy-address(AppState.selected-id); }
+            }
+            MenuItem {
+                title: @tr("Delete…");
+                enabled: root.idle && root.has-selection;
+                activated => { AppState.delete-host(AppState.selected-id); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("Wake all visible…");
+                shortcut: @keys(Control + Shift + Return);
+                enabled: root.idle && AppState.hosts.length > 0;
+                activated => { AppState.wake-all-visible(); }
+            }
+            MenuItem {
+                title: @tr("Refresh status");
+                shortcut: @keys(F5);
+                enabled: root.idle && AppState.host-count > 0;
+                activated => { AppState.refresh(); }
+            }
+        }
+        Menu {
+            title: @tr("View");
+            MenuItem {
+                title: @tr("Search");
+                shortcut: @keys(Control + F);
+                enabled: root.idle;
+                activated => { main.focus-search(); }
+            }
+            Menu {
+                title: @tr("Group");
+                enabled: root.idle && AppState.groups.length > 0;
+                MenuItem {
+                    title: @tr("All groups");
+                    checked: AppState.group-filter == "";
+                    activated => {
+                        AppState.group-filter = "";
+                        AppState.group-filter-changed("");
+                    }
+                }
+                MenuSeparator { }
+                for g in AppState.groups : MenuItem {
+                    title: g;
+                    checked: AppState.group-filter == g;
+                    activated => {
+                        AppState.group-filter = g;
+                        AppState.group-filter-changed(g);
+                    }
+                }
+            }
+        }
+        Menu {
+            title: @tr("Help");
+            MenuItem {
+                title: @tr("Command line (wolm)…");
+                enabled: root.idle;
+                activated => {
+                    SettingsState.page = 2;
+                    AppState.open-settings();
+                }
+            }
+            MenuItem {
+                title: @tr("Website");
+                activated => { AppState.open-url(AboutInfo.website-url); }
+            }
+            MenuSeparator { }
+            MenuItem {
+                title: @tr("About WoL Manager");
+                enabled: root.idle;
+                activated => { AppState.open-about(); }
+            }
+        }
+    }
+
+    main := MainView {
+        width: 100%;
+        height: 100%;
+        interactive: root.idle;
+    }
+
+    if AppState.overlay == OverlayKind.editor : HostEditorOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    if AppState.overlay == OverlayKind.settings : SettingsOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    if AppState.overlay == OverlayKind.about : AboutOverlay {
+        width: 100%;
+        height: 100%;
+    }
+    if AppState.confirm-open : ConfirmOverlay {
+        width: 100%;
+        height: 100%;
+    }
+
+    // Toasts: bottom-right above the status bar (28 px) while nothing is open. While an overlay
+    // or the confirm dialog is open they are shown inside the topmost dialog card instead
+    // (ModalFrame / DialogToasts), so that they never cover a dialog's buttons.
+    if root.idle : ToastStack {
+        width: min(360px, root.width - 24px);
+        height: root.height - 28px - 12px - 60px;
+        x: root.width - self.width - 12px;
+        y: 60px;
+    }
+}

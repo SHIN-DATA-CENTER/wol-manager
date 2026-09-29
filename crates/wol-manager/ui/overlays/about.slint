@@ -1,0 +1,171 @@
+// About overlay: app icon + version, Slint attribution (AboutSlint, Royalty-free License 2.0),
+// coolicons attribution (CC BY 4.0) and license links.
+
+import { Button, AboutSlint, ScrollView } from "std-widgets.slint";
+import { CoolIcons, AppArt } from "@coolicons";
+import { OverlayKind } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { AppState, AboutInfo } from "../state.slint";
+import { SectionHeader, LinkText, Divider, HintText } from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+global AboutLinks {
+    out property <string> apache: "https://www.apache.org/licenses/LICENSE-2.0";
+    out property <string> slint-license: "https://github.com/slint-ui/slint/blob/master/LICENSES/LicenseRef-Slint-Royalty-free-2.0.md";
+    out property <string> coolicons: "https://github.com/krystonschwarze/coolicons";
+    out property <string> cc-by: "https://creativecommons.org/licenses/by/4.0/";
+}
+
+export component AboutOverlay inherits ModalFrame {
+    title: @tr("About WoL Manager");
+    card-width: 540px;
+    close-on-backdrop: true;
+
+    function close() {
+        AppState.overlay = OverlayKind.none;
+        AppState.overlay-closed(OverlayKind.about);
+    }
+
+    close-requested => { root.close(); }
+    init => { close-button.focus(); }
+
+    ScrollView {
+        vertical-stretch: 1;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        // The fluent ScrollView does not forward its content size; the card sizes to it.
+        preferred-height: content.preferred-height;
+
+        content := VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 4px;
+            padding-bottom: 16px;
+            spacing: 12px;
+
+            HorizontalLayout {
+                spacing: 16px;
+                Image {
+                    source: AppArt.app-128;
+                    width: 64px;
+                    height: 64px;
+                    cross-axis-self-alignment: center;
+                    accessible-role: none;
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    horizontal-stretch: 1;
+                    Text {
+                        text: "WoL Manager";
+                        font-size: Theme.font-title;
+                        font-weight: 600;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: @tr("Version {0}", AboutInfo.version) + (AppState.portable ? "  ·  " + @tr("Portable") : "");
+                        color: Theme.text-secondary;
+                    }
+                    Text {
+                        text: @tr("Wake-on-LAN for Windows, with a command line tool (wolm).");
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                spacing: 4px;
+                Text {
+                    text: AboutInfo.copyright;
+                    color: Theme.text;
+                }
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+                    Text {
+                        text: @tr("License:");
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    LinkText {
+                        text: "Apache License 2.0";
+                        url: AboutLinks.apache;
+                        enabled: root.interactive;
+                    }
+                }
+                LinkText {
+                    text: @tr("Website");
+                    url: AboutInfo.website-url;
+                    enabled: root.interactive;
+                }
+            }
+
+            Divider { }
+
+            SectionHeader { title: @tr("Built with Slint"); }
+            HorizontalLayout {
+                alignment: start;
+                AboutSlint {
+                    max-height: self.min-height;
+                    max-width: 300px;
+                }
+            }
+            HintText {
+                text: @tr("Slint is used under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0.");
+            }
+            LinkText {
+                text: @tr("Slint Royalty-free License 2.0");
+                url: AboutLinks.slint-license;
+                enabled: root.interactive;
+            }
+
+            Divider { }
+
+            SectionHeader { title: @tr("Icons"); }
+            Text {
+                text: @tr("Icons: coolicons v4.1 by Kryston Schwarze — CC BY 4.0");
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            HorizontalLayout {
+                spacing: 16px;
+                alignment: start;
+                LinkText {
+                    text: @tr("coolicons");
+                    url: AboutLinks.coolicons;
+                    enabled: root.interactive;
+                }
+                LinkText {
+                    text: @tr("CC BY 4.0 license");
+                    url: AboutLinks.cc-by;
+                    enabled: root.interactive;
+                }
+            }
+            HintText {
+                text: @tr("Some icons were recolored, placed on a colored plate and converted to bitmaps (application and tray icons).");
+            }
+            HintText {
+                text: @tr("The icons are not covered by the Apache License 2.0 of WoL Manager.");
+            }
+        }
+    }
+
+    ModalFooter {
+        Button {
+            text: @tr("Third-party licenses");
+            icon: CoolIcons.external-link;
+            colorize-icon: true;
+            enabled: AboutInfo.notices-available && root.interactive;
+            clicked => { AboutInfo.open-notices(); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        close-button := Button {
+            text: @tr("Close");
+            enabled: root.interactive;
+            primary: true;
+            min-width: 96px;
+            clicked => { root.close(); }
+        }
+    }
+}

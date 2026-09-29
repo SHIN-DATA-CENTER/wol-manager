@@ -1,0 +1,116 @@
+// Toast notifications. Rust owns the list (AppState.toasts), their lifetime (success/info 4 s,
+// warning/error 8 s) and the maximum of 3.
+// - Main view: ToastStack, bottom-right, newest 3 (safeguard).
+// - While an overlay or the confirm dialog is open the stack is hidden and the newest 2 are shown
+//   inside the topmost dialog card (DialogToasts, see ModalFrame), so they never cover a dialog's
+//   buttons.
+
+import { CoolIcons } from "@coolicons";
+import { Toast, ToastKind } from "types.slint";
+import { Theme } from "theme.slint";
+import { AppState } from "state.slint";
+import { Icon, IconButton, InfoBar } from "widgets.slint";
+
+export component ToastCard inherits Rectangle {
+    in property <Toast> toast;
+    callback dismiss();
+
+    property <color> fg: root.toast.kind == ToastKind.error ? Theme.error-fg
+        : root.toast.kind == ToastKind.warning ? Theme.warning-fg
+        : root.toast.kind == ToastKind.success ? Theme.success-fg
+        : Theme.info-fg;
+
+    background: Theme.card;
+    border-radius: Theme.radius-large;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    drop-shadow-blur: 16px;
+    drop-shadow-offset-y: 4px;
+    drop-shadow-color: #00000038;
+    accessible-role: text;
+    accessible-label: root.toast.text;
+
+    // Swallow clicks on the card, so that they never reach what is underneath (e.g. the Wake
+    // button of a row the toast covers). The × button is drawn above and still works.
+    TouchArea { }
+
+    // Severity stripe
+    Rectangle {
+        x: 0;
+        width: 4px;
+        border-top-left-radius: Theme.radius-large;
+        border-bottom-left-radius: Theme.radius-large;
+        background: root.fg;
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 6px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 10px;
+        Icon {
+            source: root.toast.kind == ToastKind.success ? CoolIcons.ok
+                : root.toast.kind == ToastKind.info ? CoolIcons.info
+                : CoolIcons.warning;
+            size: 20px;
+            tint: root.fg;
+            cross-axis-self-alignment: start;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text {
+                text: root.toast.text;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            if root.toast.detail != "" : Text {
+                text: root.toast.detail;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+        IconButton {
+            icon: CoolIcons.close;
+            tooltip: @tr("Dismiss");
+            size: 28px;
+            icon-size: 14px;
+            cross-axis-self-alignment: start;
+            clicked => { root.dismiss(); }
+        }
+    }
+}
+
+/// Column of toasts anchored at its bottom edge. Position/size it from the parent.
+export component ToastStack inherits VerticalLayout {
+    alignment: end;
+    spacing: 8px;
+    for t[i] in AppState.toasts : ToastCard {
+        toast: t;
+        visible: i >= AppState.toasts.length - 3;
+        max-height: self.visible ? 10000px : 0px;
+        dismiss => { AppState.dismiss-toast(t.id); }
+    }
+}
+
+/// The newest 2 toasts as InfoBars, for the top of a dialog card (ModalFrame).
+export component DialogToasts inherits VerticalLayout {
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-bottom: 4px;
+    for t[i] in AppState.toasts : VerticalLayout {
+        if i >= AppState.toasts.length - 2 : VerticalLayout {
+            padding-bottom: 6px;
+            InfoBar {
+                severity: t.kind;
+                title: t.text;
+                detail: t.detail;
+                close-tooltip: @tr("Dismiss");
+                close => { AppState.dismiss-toast(t.id); }
+            }
+        }
+    }
+}

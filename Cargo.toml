@@ -1,0 +1,95 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/wol-core",
+    "crates/wol-build",
+    "crates/wol-manager",
+    "crates/wolm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "Apache-2.0"
+authors = ["SHIN DATA CENTER"]
+repository = "https://github.com/SHIN-DATA-CENTER/wol-manager"
+publish = false
+
+# Shared identifiers. Must match crates/wol-core/src/consts.rs (checked by tests/consts.rs)
+# and are passed to the NSIS installer by scripts/build.ps1.
+[workspace.metadata.wol]
+product-name = "WoL Manager"
+publisher = "SHIN DATA CENTER"
+app-dir-name = "wol-manager"
+install-dir-name = "WoL Manager"
+uninstall-key = "wol-manager"
+gui-exe = "wol-manager.exe"
+cli-exe = "wolm.exe"
+cli-subdir = "bin"
+portable-marker = "wol-manager.portable"
+portable-data-dir = "data"
+installed-sentinel = "uninstall.exe"
+gui-mutex = 'Local\wol-manager.gui.8d3c5f2a-7b41-4e9a-a6c2-1f0e9b7d4c35'
+gui-show-event = 'Local\wol-manager.gui.8d3c5f2a-7b41-4e9a-a6c2-1f0e9b7d4c35.show'
+gui-quit-event = 'Local\wol-manager.gui.8d3c5f2a-7b41-4e9a-a6c2-1f0e9b7d4c35.quit'
+
+[workspace.dependencies]
+wol-core = { path = "crates/wol-core" }
+wol-build = { path = "crates/wol-build" }
+
+# core
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1"
+serde_json = "1.0.151"
+csv = "1.4"
+encoding_rs = "0.8"
+thiserror = "2.0.21"
+dirs = "7.0.0"
+uuid = { version = "1.26.1", features = ["v4", "v5", "serde"] }
+netdev = { version = "0.46.3", default-features = false }
+winreg = "0.56.0"
+sys-locale = "0.3.2"
+windows-sys = "0.61.2"
+log = "0.4"
+anyhow = "1.0.104"
+
+# cli
+clap = { version = "4.6.7", features = ["derive", "wrap_help"] }
+clap_complete = "4.6.11"
+anstream = "1"
+anstyle = "1"
+unicode-width = "0.2"
+
+# gui
+slint = { version = "~1.18.1", features = ["raw-window-handle-06"] }
+slint-build = "~1.18.1"
+raw-window-handle = "0.6"
+arboard = { version = "3.6", default-features = false }
+
+# build helpers
+resvg = { version = "0.48.1", default-features = false }
+ico = "0.5.0"
+winresource = { version = "0.1.31", default-features = false }
+
+# tests
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+debug = "line-tables-only"
+panic = "unwind"
+
+[profile.dev.package."*"]
+# Keep dependencies (Slint, resvg) reasonably fast in debug builds.
+opt-level = 2

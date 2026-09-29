@@ -1,0 +1,14 @@
+# Location of the coolicons v4.1 package (never committed; see scripts/fetch-coolicons.ps1).
+# An externally set COOLICONS_DIR environment variable takes precedence.
+[env]
+COOLICONS_DIR = { value = "coolicons.v4.1", relative = true }
+
+# NOTE: a RUSTFLAGS / CARGO_ENCODED_RUSTFLAGS environment variable silently replaces
+# these flags; scripts/build.ps1 refuses to run when one is set.
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    # Link the C runtime statically so users do not need the VC++ redistributable.
+    "-C", "target-feature=+crt-static",
+    # Slint's Windows guide: avoid stack overflows in debug builds.
+    "-C", "link-arg=/STACK:8000000",
+]

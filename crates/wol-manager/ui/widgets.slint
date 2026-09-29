@@ -1,0 +1,662 @@
+// Reusable widgets. coolicons SVGs stroke in the "current colour", which renders black, so every icon is tinted
+// (Image.colorize / Button.colorize-icon); otherwise it would render black in dark mode.
+
+import { Palette, Button, Spinner } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { HostStatus, ToastKind, FieldIssue } from "types.slint";
+import { Theme } from "theme.slint";
+import { AppState, Texts } from "state.slint";
+
+/// Content of a Tooltip (custom mode, so the text can be a plain translated string).
+export component TipBubble inherits Rectangle {
+    in property <string> text;
+    background: Theme.card;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    max-width: 360px;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-top: 5px;
+        padding-bottom: 6px;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+        }
+    }
+}
+
+/// A tinted coolicons glyph.
+export component Icon inherits Image {
+    in property <brush> tint: Theme.text;
+    in property <length> size: 16px;
+    width: self.size;
+    height: self.size;
+    colorize: self.tint;
+    accessible-role: none;
+}
+
+/// Square, borderless icon-only button with tooltip (the tooltip is also the accessible label).
+export component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <string> tooltip;
+    in property <bool> enabled: true;
+    in property <length> icon-size: 16px;
+    in property <length> size: 32px;
+    in property <brush> icon-color: Theme.text;
+    out property <bool> has-focus: fs.has-focus;
+    callback clicked();
+
+    width: self.size;
+    height: self.size;
+    border-radius: 4px;
+    background: !root.enabled ? transparent : ta.pressed ? Theme.pressed : ta.has-hover ? Theme.hover : transparent;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.tooltip;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+
+    Image {
+        source: root.icon;
+        width: root.icon-size;
+        height: root.icon-size;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        colorize: root.enabled ? root.icon-color : Theme.text-tertiary;
+        accessible-role: none;
+    }
+
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    if fs.has-focus && root.enabled : Rectangle {
+        border-radius: root.border-radius;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+
+    if root.tooltip != "" : Tooltip {
+        TipBubble { text: root.tooltip; }
+    }
+}
+
+/// Coloured status dot. unknown / not-monitored are hollow rings; checking / waking pulse.
+export component StatusDot {
+    in property <HostStatus> status;
+    /// Toggled by a shared timer; pulsing dots fade while it is true.
+    in property <bool> pulse;
+    in property <length> size: 10px;
+
+    property <bool> hollow: root.status == HostStatus.unknown || root.status == HostStatus.not-monitored;
+    property <bool> pulsing: root.status == HostStatus.checking || root.status == HostStatus.waking;
+    property <color> fill: root.status == HostStatus.online ? Theme.status-online
+        : root.status == HostStatus.waking ? Theme.status-waking
+        : root.status == HostStatus.timeout ? Theme.status-timeout
+        : root.status == HostStatus.checking ? Theme.status-checking
+        : Theme.status-offline;
+
+    width: root.size;
+    height: root.size;
+    accessible-role: none;
+
+    Rectangle {
+        border-radius: self.width / 2;
+        background: root.hollow ? transparent : root.fill;
+        border-width: root.hollow ? 1.5px : 0px;
+        border-color: Theme.status-ring;
+        opacity: root.pulsing && root.pulse ? 0.3 : 1.0;
+        animate opacity { duration: 450ms; easing: ease-in-out; }
+    }
+}
+
+/// Status dot + status text (colour is never the only signal).
+export component StatusBadge inherits HorizontalLayout {
+    in property <HostStatus> status;
+    in property <bool> pulse;
+    in property <length> font-size: Theme.font-body;
+    spacing: 8px;
+    StatusDot {
+        status: root.status;
+        pulse: root.pulse;
+        cross-axis-self-alignment: center;
+    }
+    Text {
+        text: Texts.status(root.status);
+        font-size: root.font-size;
+        color: root.status == HostStatus.unknown || root.status == HostStatus.not-monitored ? Theme.text-secondary : Theme.text;
+        vertical-alignment: center;
+        overflow: elide;
+        horizontal-stretch: 1;
+    }
+}
+
+/// Thin horizontal separator.
+export component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.divider;
+}
+
+/// Bold section title with an optional description.
+export component SectionHeader inherits VerticalLayout {
+    in property <string> title;
+    in property <string> description;
+    spacing: 2px;
+    padding-top: 4px;
+    Text {
+        text: root.title;
+        font-size: Theme.font-body;
+        font-weight: 600;
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    if root.description != "" : Text {
+        text: root.description;
+        font-size: Theme.font-small;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+}
+
+/// Monospace chip, e.g. for "wolm --help".
+export component CodeChip inherits Rectangle {
+    in property <string> text;
+    in property <length> font-size: 13px;
+    background: Theme.subtle-fill;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    horizontal-stretch: 0;
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        padding-top: 2px;
+        padding-bottom: 2px;
+        Text {
+            text: root.text;
+            font-family: Theme.mono-font;
+            font-size: root.font-size;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+}
+
+/// Clickable link text with the external-link glyph. Opens `url` via AppState.open-url
+/// unless `url` is empty, in which case only `clicked` is invoked. Keyboard: Tab stop,
+/// Space / Enter activate.
+export component LinkText inherits Rectangle {
+    in property <string> text;
+    in property <string> url;
+    in property <length> font-size: Theme.font-body;
+    in property <bool> show-icon: true;
+    in property <bool> enabled: true;
+    callback clicked();
+    horizontal-stretch: 0;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { root.activate(); }
+
+    function activate() {
+        if !root.enabled {
+            return;
+        }
+        if root.url != "" {
+            AppState.open-url(root.url);
+        }
+        root.clicked();
+    }
+
+    HorizontalLayout {
+        spacing: 4px;
+        alignment: start;
+        Text {
+            text: root.text;
+            font-size: root.font-size;
+            color: ta.has-hover ? Theme.link-hover : Theme.link;
+            vertical-alignment: center;
+        }
+        if root.show-icon : Icon {
+            source: CoolIcons.external-link;
+            size: 14px;
+            tint: ta.has-hover ? Theme.link-hover : Theme.link;
+            cross-axis-self-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.activate(); }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.activate();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus && root.enabled : Rectangle {
+        x: -3px;
+        y: -1px;
+        width: parent.width + 6px;
+        height: parent.height + 2px;
+        border-radius: 3px;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+/// Inline validation message (red, with icon).
+export component IssueText inherits HorizontalLayout {
+    in property <string> text;
+    spacing: 6px;
+    Icon {
+        source: CoolIcons.warning;
+        size: 14px;
+        tint: Theme.error-text;
+        cross-axis-self-alignment: start;
+    }
+    Text {
+        text: root.text;
+        color: Theme.error-text;
+        font-size: Theme.font-small;
+        wrap: word-wrap;
+        horizontal-stretch: 1;
+    }
+}
+
+/// Secondary helper text under a field.
+export component HintText inherits Text {
+    color: Theme.text-secondary;
+    font-size: Theme.font-small;
+    wrap: word-wrap;
+}
+
+/// Labelled form field: label, the control (children), then the issue message or a hint.
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <bool> required;
+    in property <FieldIssue> issue: FieldIssue.none;
+    in property <string> hint;
+    spacing: 4px;
+    alignment: start;
+
+    HorizontalLayout {
+        spacing: 2px;
+        alignment: start;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+        }
+        if root.required : Text {
+            text: "*";
+            color: Theme.error-text;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    @children
+    if root.issue != FieldIssue.none : IssueText {
+        text: Texts.issue(root.issue);
+    }
+    if root.issue == FieldIssue.none && root.hint != "" : HintText {
+        text: root.hint;
+    }
+}
+
+/// ComboBox-looking button that opens a custom popup (placed by the parent).
+export component DropdownButton inherits Rectangle {
+    in property <string> text;
+    in property <string> placeholder;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    out property <bool> has-focus: fs.has-focus;
+    callback clicked();
+
+    min-width: 120px;
+    height: 32px;
+    horizontal-stretch: 1;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    background: !root.enabled ? transparent : ta.pressed ? Theme.pressed : ta.has-hover ? Theme.hover : Palette.control-background;
+    forward-focus: fs;
+    accessible-role: combobox;
+    accessible-value: root.text;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 8px;
+        if root.icon.width > 0 : Icon {
+            source: root.icon;
+            size: 16px;
+            tint: root.enabled ? Theme.text-secondary : Theme.text-tertiary;
+            cross-axis-self-alignment: center;
+        }
+        Text {
+            text: root.text != "" ? root.text : root.placeholder;
+            color: !root.enabled ? Theme.text-tertiary : root.text != "" ? Theme.text : Theme.text-secondary;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Icon {
+            source: CoolIcons.chevron-down;
+            size: 14px;
+            tint: root.enabled ? Theme.text-secondary : Theme.text-tertiary;
+            cross-axis-self-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { fs.focus(); root.clicked(); }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return || event.text == Key.DownArrow || event.text == Key.F4 {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus && root.enabled : Rectangle {
+        border-radius: root.border-radius;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+/// Keyboard handling of a popup list. Put it inside the PopupWindow (around the PopupFrame) and
+/// set the popup's `forward-focus` to it: the popup then takes the focus when it opens (Slint
+/// gives it back to the opener when it closes). Up / Down / Home / End move `current`, Enter /
+/// Space choose it, Esc / Tab close. Items show `highlighted: keys.current == <position>`.
+export component PopupListKeys inherits FocusScope {
+    in property <int> count;
+    in-out property <int> current;
+    callback choose(index: int);
+    callback close();
+
+    key-pressed(event) => {
+        if event.text == Key.UpArrow {
+            root.current = max(0, root.current - 1);
+            return accept;
+        }
+        if event.text == Key.DownArrow {
+            root.current = min(root.count - 1, root.current + 1);
+            return accept;
+        }
+        if event.text == Key.Home || event.text == Key.PageUp {
+            root.current = 0;
+            return accept;
+        }
+        if event.text == Key.End || event.text == Key.PageDown {
+            root.current = root.count - 1;
+            return accept;
+        }
+        if event.text == Key.Return || event.text == Key.Space {
+            if root.current >= 0 && root.current < root.count {
+                root.choose(root.current);
+            }
+            return accept;
+        }
+        if event.text == Key.Escape || event.text == Key.Tab || event.text == Key.Backtab {
+            root.close();
+            return accept;
+        }
+        return reject;
+    }
+}
+
+/// Frame for popup lists (inside a PopupWindow).
+export component PopupFrame inherits Rectangle {
+    background: Theme.card;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    drop-shadow-blur: 12px;
+    drop-shadow-offset-y: 4px;
+    drop-shadow-color: #00000033;
+}
+
+/// One entry of a popup list; `checked` shows the fluent accent pill, `highlighted` is the
+/// keyboard position (PopupListKeys.current).
+export component PopupItem inherits Rectangle {
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> checked;
+    in property <bool> highlighted;
+    callback clicked();
+    min-height: 32px;
+    border-radius: 4px;
+    background: ta.pressed ? Theme.pressed : ta.has-hover || root.highlighted ? Theme.hover : root.checked ? Theme.subtle-fill : transparent;
+    border-width: root.highlighted ? 1.5px : 0px;
+    border-color: Theme.text;
+    accessible-role: list-item;
+    accessible-label: root.text;
+    accessible-item-selected: root.checked;
+    accessible-action-default => { root.clicked(); }
+
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: 16px;
+        border-radius: 1.5px;
+        background: root.checked ? Theme.accent : transparent;
+    }
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 8px;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        if root.detail != "" : Text {
+            text: root.detail;
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            horizontal-stretch: 0;
+        }
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+/// Windows-settings style card: title / description on the left, control(s) on the right.
+export component SettingRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    /// Use char-wrap for descriptions that are paths.
+    in property <TextWrap> description-wrap: TextWrap.word-wrap;
+    in property <image> icon;
+    in property <bool> enabled: true;
+    background: Theme.card;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    vertical-stretch: 0;
+
+    // No explicit min-height here: it would disable the height-for-width layout info and
+    // wrapped descriptions would overflow the card. Padding + 32 px controls give ~56 px.
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 14px;
+        // The icon slot is always reserved, so that the titles of rows with and without an icon
+        // line up (and with the icon cards on the storage page, which use the same metrics).
+        Rectangle {
+            width: 18px;
+            if root.icon.width > 0 : Icon {
+                x: 0;
+                y: (parent.height - self.height) / 2;
+                source: root.icon;
+                size: 18px;
+                tint: root.enabled ? Theme.text : Theme.text-tertiary;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: root.enabled ? Theme.text : Theme.text-tertiary;
+                wrap: word-wrap;
+            }
+            if root.description != "" : Text {
+                text: root.description;
+                color: root.enabled ? Theme.text-secondary : Theme.text-tertiary;
+                font-size: Theme.font-small;
+                wrap: root.description-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            horizontal-stretch: 0;
+            cross-axis-alignment: center;
+            @children
+        }
+    }
+}
+
+/// InfoBar (Windows style): severity icon, title, message, detail, actions and close button.
+export component InfoBar inherits Rectangle {
+    in property <ToastKind> severity: ToastKind.info;
+    in property <string> title;
+    in property <string> message;
+    in property <string> detail;
+    in property <string> action-text;
+    in property <string> secondary-action-text;
+    in property <bool> closable: true;
+    /// False disables the buttons (e.g. while a dialog covers the main view).
+    in property <bool> enabled: true;
+    in property <string> close-tooltip: @tr("Close");
+    callback action();
+    callback secondary-action();
+    callback close();
+
+    property <color> fg: root.severity == ToastKind.error ? Theme.error-fg
+        : root.severity == ToastKind.warning ? Theme.warning-fg
+        : root.severity == ToastKind.success ? Theme.success-fg
+        : Theme.info-fg;
+    background: root.severity == ToastKind.error ? Theme.error-bg
+        : root.severity == ToastKind.warning ? Theme.warning-bg
+        : root.severity == ToastKind.success ? Theme.success-bg
+        : Theme.info-bg;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    accessible-role: groupbox;
+    accessible-label: root.title;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 6px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 12px;
+        Icon {
+            source: root.severity == ToastKind.error ? CoolIcons.warning
+                : root.severity == ToastKind.warning ? CoolIcons.warning
+                : root.severity == ToastKind.success ? CoolIcons.ok
+                : CoolIcons.info;
+            size: 18px;
+            tint: root.fg;
+            cross-axis-self-alignment: start;
+        }
+        VerticalLayout {
+            spacing: 2px;
+            alignment: center;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                font-weight: 600;
+                color: Theme.text;
+                wrap: word-wrap;
+            }
+            if root.message != "" : Text {
+                text: root.message;
+                color: Theme.text;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+            if root.detail != "" : Text {
+                text: root.detail;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                font-family: Theme.mono-font;
+                wrap: word-wrap;
+            }
+        }
+        if root.secondary-action-text != "" : Button {
+            text: root.secondary-action-text;
+            enabled: root.enabled;
+            cross-axis-self-alignment: center;
+            clicked => { root.secondary-action(); }
+        }
+        if root.action-text != "" : Button {
+            text: root.action-text;
+            enabled: root.enabled;
+            cross-axis-self-alignment: center;
+            clicked => { root.action(); }
+        }
+        if root.closable : IconButton {
+            icon: CoolIcons.close;
+            tooltip: root.close-tooltip;
+            enabled: root.enabled;
+            size: 28px;
+            cross-axis-self-alignment: start;
+            clicked => { root.close(); }
+        }
+    }
+}
+
+/// Small indeterminate spinner (no rotating icons: the software renderer cannot rotate images).
+export component BusySpinner inherits Spinner {
+    indeterminate: true;
+    width: 16px;
+    height: 16px;
+}

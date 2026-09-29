@@ -1,0 +1,527 @@
+// Host editor overlay (add / edit / duplicate).
+//
+// Field values live in EditorState (two-way). Every edit re-runs the matching Validator pure
+// callback and stores the result in EditorState.*-issue; Rust validates again on save.
+
+import { Button, LineEdit, TextEdit, CheckBox, ComboBox, ScrollView } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { EditorMode, FieldIssue, ArpStatus, OverlayKind, InterfaceOption } from "../types.slint";
+import { Theme } from "../theme.slint";
+import { AppState, EditorState, Validator, SettingsState, Texts } from "../state.slint";
+import {
+    Field, HintText, IssueText, Icon, IconButton, Divider, DropdownButton, PopupFrame, PopupItem,
+    PopupListKeys, BusySpinner,
+} from "../widgets.slint";
+import { ModalFrame, ModalFooter } from "modal.slint";
+
+/// Adapter pinning picker: Automatic / keep the existing pinning / one adapter.
+/// List positions: 0 = automatic (-1), [1 = keep (-2)], then the adapters.
+component InterfacePicker inherits DropdownButton {
+    property <int> index: EditorState.interface-index;
+    /// The host's existing pinning can't be shown as one present adapter: offer to keep it.
+    property <bool> keep-available: EditorState.interface-pinned-count > 1 || EditorState.interface-missing;
+    property <int> first-adapter: root.keep-available ? 2 : 1;
+    property <int> position: root.index == -2 && root.keep-available ? 1
+        : root.index >= 0 && root.index < EditorState.interfaces.length ? root.index + root.first-adapter
+        : 0;
+    property <string> keep-text: @tr("Keep current pinning ({n} adapter)" | "Keep current pinning ({n} adapters)" % max(1, EditorState.interface-pinned-count));
+    text: root.index == -2 ? root.keep-text
+        : root.index >= 0 && root.index < EditorState.interfaces.length
+            ? EditorState.interfaces[root.index].label + "  (" + EditorState.interfaces[root.index].detail + ")"
+            : @tr("Automatic (all suitable adapters)");
+    clicked => { popup.show(); }
+
+    function choose(position: int) {
+        EditorState.interface-index = position <= 0 ? -1
+            : root.keep-available && position == 1 ? -2
+            : position - root.first-adapter;
+        popup.close();
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: max(root.width, 280px);
+        close-policy: PopupClosePolicy.close-on-click-outside;
+        forward-focus: keys;
+        keys := PopupListKeys {
+            count: root.first-adapter + EditorState.interfaces.length;
+            current: root.position;
+            choose(p) => { root.choose(p); }
+            close => { popup.close(); }
+            PopupFrame {
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    PopupItem {
+                        text: @tr("Automatic (all suitable adapters)");
+                        checked: root.index == -1;
+                        highlighted: keys.current == 0;
+                        clicked => { root.choose(0); }
+                    }
+                    if root.keep-available : PopupItem {
+                        text: root.keep-text;
+                        checked: root.index == -2;
+                        highlighted: keys.current == 1;
+                        clicked => { root.choose(1); }
+                    }
+                    for opt[i] in EditorState.interfaces : PopupItem {
+                        text: opt.label;
+                        detail: opt.detail;
+                        checked: root.index == i;
+                        highlighted: keys.current == i + root.first-adapter;
+                        clicked => { root.choose(i + root.first-adapter); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Clickable header of the collapsible "Advanced" section.
+component ExpanderHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> summary;
+    in property <bool> enabled: true;
+    in-out property <bool> expanded;
+    min-height: 44px;
+    border-radius: Theme.radius;
+    background: ta.pressed ? Theme.pressed : ta.has-hover ? Theme.hover : Theme.subtle-fill;
+    border-width: 1px;
+    border-color: Theme.card-border;
+    forward-focus: fs;
+    accessible-role: button;
+    accessible-label: root.title;
+    accessible-enabled: root.enabled;
+    accessible-expandable: true;
+    accessible-expanded: root.expanded;
+    accessible-action-default => {
+        if root.enabled {
+            root.expanded = !root.expanded;
+        }
+    }
+    // Screen readers see an expandable button as expand/collapse (UIA ExpandCollapse, no
+    // Invoke), so "Expand" must work too.
+    accessible-action-expand => {
+        if root.enabled {
+            root.expanded = true;
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        spacing: 10px;
+        Icon {
+            source: root.expanded ? CoolIcons.chevron-down : CoolIcons.chevron-right;
+            size: 16px;
+            tint: Theme.text;
+            cross-axis-self-alignment: center;
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 1px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            if !root.expanded && root.summary != "" : Text {
+                text: root.summary;
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                overflow: elide;
+            }
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            fs.focus();
+            root.expanded = !root.expanded;
+        }
+    }
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.expanded = !root.expanded;
+                return accept;
+            }
+            return reject;
+        }
+    }
+    if fs.has-focus && root.enabled : Rectangle {
+        border-radius: root.border-radius;
+        border-width: 2px;
+        border-color: Theme.text;
+    }
+}
+
+export component HostEditorOverlay inherits ModalFrame {
+    title: EditorState.mode == EditorMode.edit ? @tr("Edit host")
+        : EditorState.mode == EditorMode.duplicate ? @tr("Duplicate host")
+        : @tr("Add host");
+    title-icon: EditorState.mode == EditorMode.add ? CoolIcons.add : EditorState.mode == EditorMode.duplicate ? CoolIcons.copy : CoolIcons.edit;
+    card-width: 600px;
+
+    /// The TCP ports are used by the chosen method: automatic (1), TCP (3), or the settings
+    /// default (0) when that is automatic or TCP.
+    property <bool> tcp-ports-used: EditorState.probe-index == 1 || EditorState.probe-index == 3
+        || (EditorState.probe-index == 0 && (SettingsState.probe-method-index == 0 || SettingsState.probe-method-index == 2));
+
+    function cancel() {
+        AppState.overlay = OverlayKind.none;
+        AppState.overlay-closed(OverlayKind.editor);
+    }
+
+    function validate-all() {
+        EditorState.name-issue = Validator.check-name(EditorState.name, EditorState.host-id);
+        EditorState.mac-issue = Validator.check-mac(EditorState.mac);
+        EditorState.address-issue = Validator.check-address(EditorState.address);
+        EditorState.targets-issue = Validator.check-targets(EditorState.targets);
+        EditorState.port-issue = Validator.check-port(EditorState.port);
+        EditorState.secureon-issue = Validator.check-secureon(EditorState.secureon);
+        EditorState.tcp-ports-issue = Validator.check-tcp-ports(EditorState.tcp-ports);
+        if EditorState.targets-issue != FieldIssue.none || EditorState.port-issue != FieldIssue.none
+            || EditorState.secureon-issue != FieldIssue.none || EditorState.tcp-ports-issue != FieldIssue.none {
+            EditorState.advanced-open = true;
+        }
+    }
+
+    function save() {
+        if EditorState.saving || !root.interactive {
+            return;
+        }
+        root.validate-all();
+        EditorState.save();
+    }
+
+    close-requested => { root.cancel(); }
+    init => { name-edit.focus(); }
+
+    ScrollView {
+        vertical-stretch: 1;
+        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+        // The fluent ScrollView does not forward its content size; the card sizes to it.
+        preferred-height: content.preferred-height;
+
+        content := VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 6px;
+            padding-bottom: 18px;
+            spacing: 14px;
+            alignment: start;
+
+            // Every control takes its accessible label from its Field (screen readers would
+            // otherwise announce the placeholder or nothing). Every control is disabled while
+            // the confirm dialog is open above the editor (root.interactive), so that Tab can't
+            // reach it.
+            name-field := Field {
+                label: @tr("Name");
+                required: true;
+                issue: EditorState.name-issue;
+                name-edit := LineEdit {
+                    accessible-label: name-field.label;
+                    enabled: root.interactive;
+                    text <=> EditorState.name;
+                    placeholder-text: @tr("e.g. Office PC");
+                    edited(text) => { EditorState.name-issue = Validator.check-name(text, EditorState.host-id); }
+                    accepted => { root.save(); }
+                }
+            }
+
+            mac-field := Field {
+                label: @tr("MAC address");
+                required: true;
+                issue: EditorState.mac-issue;
+                hint: EditorState.arp-status == ArpStatus.found ? @tr("Found the MAC address of this IP address.") : "";
+                HorizontalLayout {
+                    spacing: 8px;
+                    LineEdit {
+                        accessible-label: mac-field.label;
+                        enabled: root.interactive;
+                        text <=> EditorState.mac;
+                        font-family: Theme.mono-font;
+                        input-type: InputType.text;
+                        placeholder-text: "AA:BB:CC:DD:EE:FF";
+                        edited(text) => { EditorState.mac-issue = Validator.check-mac(text); }
+                        accepted => { root.save(); }
+                    }
+                    Button {
+                        text: @tr("Get from IP");
+                        icon: CoolIcons.search;
+                        colorize-icon: true;
+                        enabled: root.interactive && EditorState.arp-status != ArpStatus.busy && Validator.is-ipv4(EditorState.address);
+                        clicked => { EditorState.lookup-mac(EditorState.address); }
+                    }
+                    if EditorState.arp-status == ArpStatus.busy : BusySpinner {
+                        width: 20px;
+                        height: 20px;
+                        cross-axis-self-alignment: center;
+                    }
+                }
+                if EditorState.arp-status == ArpStatus.not-found : IssueText {
+                    text: @tr("No device answered at this IP address. Make sure it is on and try again.");
+                }
+                if EditorState.arp-status == ArpStatus.not-local : IssueText {
+                    text: @tr("“Get from IP” only works for addresses in a local subnet of this PC.");
+                }
+                if EditorState.arp-status == ArpStatus.failed : IssueText {
+                    text: @tr("The MAC address could not be looked up.");
+                }
+            }
+
+            address-field := Field {
+                label: @tr("Address");
+                issue: EditorState.address-issue;
+                hint: @tr("IPv4 address or host name. Used for status checks and “Get from IP”.");
+                LineEdit {
+                    accessible-label: address-field.label;
+                    enabled: root.interactive;
+                    text <=> EditorState.address;
+                    input-type: InputType.text;
+                    placeholder-text: @tr("e.g. 192.168.1.10 or nas.local");
+                    edited(text) => { EditorState.address-issue = Validator.check-address(text); }
+                    accepted => { root.save(); }
+                }
+            }
+
+            group-field := Field {
+                label: @tr("Group");
+                group-row := HorizontalLayout {
+                    spacing: 4px;
+                    group-edit := LineEdit {
+                        accessible-label: group-field.label;
+                        enabled: root.interactive;
+                        text <=> EditorState.group;
+                        placeholder-text: @tr("None");
+                        accepted => { root.save(); }
+                        // Alt+Down opens the suggestions, like a combo box.
+                        key-pressed(event) => {
+                            if event.modifiers.alt && event.text == Key.DownArrow && AppState.groups.length > 0 {
+                                group-popup.show();
+                                return accept;
+                            }
+                            return reject;
+                        }
+                    }
+                    IconButton {
+                        icon: CoolIcons.chevron-down;
+                        tooltip: @tr("Choose an existing group");
+                        enabled: root.interactive && AppState.groups.length > 0;
+                        cross-axis-self-alignment: center;
+                        clicked => { group-popup.show(); }
+                    }
+                }
+                group-popup := PopupWindow {
+                    x: 0;
+                    y: group-row.y + group-row.height + 4px;
+                    width: max(group-edit.width, 200px);
+                    close-policy: PopupClosePolicy.close-on-click-outside;
+                    forward-focus: group-keys;
+                    group-keys := PopupListKeys {
+                        count: AppState.groups.length;
+                        // The item of the current group moves it there in its init.
+                        current: 0;
+                        choose(i) => {
+                            EditorState.group = AppState.groups[i];
+                            group-popup.close();
+                        }
+                        close => { group-popup.close(); }
+                        PopupFrame {
+                            VerticalLayout {
+                                padding: 4px;
+                                spacing: 2px;
+                                for g[i] in AppState.groups : PopupItem {
+                                    text: g;
+                                    checked: EditorState.group == g;
+                                    highlighted: group-keys.current == i;
+                                    clicked => {
+                                        EditorState.group = g;
+                                        group-popup.close();
+                                    }
+                                    init => {
+                                        if self.checked {
+                                            group-keys.current = i;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            notes-field := Field {
+                label: @tr("Notes");
+                LineEdit {
+                    accessible-label: notes-field.label;
+                    enabled: root.interactive;
+                    text <=> EditorState.notes;
+                    placeholder-text: @tr("Optional");
+                    accepted => { root.save(); }
+                }
+            }
+
+            ExpanderHeader {
+                title: @tr("Advanced settings");
+                summary: @tr("Broadcast, extra targets, port, network adapter, SecureOn, status check");
+                enabled: root.interactive;
+                expanded <=> EditorState.advanced-open;
+            }
+
+            if EditorState.advanced-open : VerticalLayout {
+                spacing: 14px;
+
+                CheckBox {
+                    text: @tr("Send to the broadcast address of each network adapter");
+                    enabled: root.interactive;
+                    checked <=> EditorState.broadcast;
+                }
+
+                targets-field := Field {
+                    label: @tr("Additional targets");
+                    issue: EditorState.targets-issue;
+                    hint: @tr("One per line, e.g. 192.168.20.255 or wol-relay.example.lan:9. Needed for other subnets.");
+                    TextEdit {
+                        accessible-label: targets-field.label;
+                        enabled: root.interactive;
+                        height: 64px;
+                        text <=> EditorState.targets;
+                        font-family: Theme.mono-font;
+                        wrap: no-wrap;
+                        edited(text) => { EditorState.targets-issue = Validator.check-targets(text); }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    port-field := Field {
+                        width: 150px;
+                        label: @tr("Port");
+                        issue: EditorState.port-issue;
+                        LineEdit {
+                            accessible-label: port-field.label;
+                            enabled: root.interactive;
+                            min-width: 100px;
+                            text <=> EditorState.port;
+                            input-type: InputType.text;
+                            placeholder-text: @tr("Default ({0})", SettingsState.default-port);
+                            edited(text) => { EditorState.port-issue = Validator.check-port(text); }
+                            accepted => { root.save(); }
+                        }
+                    }
+                    adapter-field := Field {
+                        horizontal-stretch: 1;
+                        label: @tr("Network adapter");
+                        InterfacePicker {
+                            accessible-label: adapter-field.label;
+                            enabled: root.interactive;
+                        }
+                        if EditorState.interface-missing && EditorState.interface-index == -2 : IssueText {
+                            text: @tr("A pinned adapter is not present on this PC. No packet is sent through it.");
+                        }
+                    }
+                }
+
+                secureon-field := Field {
+                    label: @tr("SecureOn password");
+                    issue: EditorState.secureon-issue;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Icon {
+                            source: CoolIcons.lock;
+                            size: 16px;
+                            tint: Theme.text-secondary;
+                            cross-axis-self-alignment: center;
+                        }
+                        LineEdit {
+                            accessible-label: secureon-field.label;
+                            enabled: root.interactive;
+                            text <=> EditorState.secureon;
+                            font-family: Theme.mono-font;
+                            input-type: InputType.text;
+                            placeholder-text: @tr("Not used");
+                            edited(text) => { EditorState.secureon-issue = Validator.check-secureon(text); }
+                            accepted => { root.save(); }
+                        }
+                    }
+                    if EditorState.secureon-issue == FieldIssue.none : HorizontalLayout {
+                        spacing: 6px;
+                        Icon {
+                            source: CoolIcons.info;
+                            size: 14px;
+                            tint: Theme.warning-fg;
+                            cross-axis-self-alignment: start;
+                        }
+                        HintText {
+                            text: @tr("Saved as plain text in config.toml. Only needed if the network card requires it.");
+                            horizontal-stretch: 1;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    probe-field := Field {
+                        horizontal-stretch: 1;
+                        label: @tr("Status check");
+                        ComboBox {
+                            accessible-label: probe-field.label;
+                            enabled: root.interactive;
+                            // The first entry names the current default (Settings > Wake & status).
+                            model: [
+                                @tr("Default ({0})", Texts.probe-method(SettingsState.probe-method-index)),
+                                @tr("Automatic (ping, then TCP)"),
+                                @tr("Ping (ICMP)"),
+                                @tr("TCP port"),
+                                @tr("Don't check"),
+                            ];
+                            current-index <=> EditorState.probe-index;
+                        }
+                    }
+                    tcp-field := Field {
+                        horizontal-stretch: 1;
+                        label: @tr("TCP ports");
+                        issue: EditorState.tcp-ports-issue;
+                        LineEdit {
+                            accessible-label: tcp-field.label;
+                            min-width: 100px;
+                            enabled: root.interactive && root.tcp-ports-used;
+                            text <=> EditorState.tcp-ports;
+                            input-type: InputType.text;
+                            // "" = the default ports of Settings > Wake & status.
+                            placeholder-text: SettingsState.probe-tcp-ports != "" ? @tr("Default ({0})", SettingsState.probe-tcp-ports) : @tr("None");
+                            edited(text) => { EditorState.tcp-ports-issue = Validator.check-tcp-ports(text); }
+                            accepted => { root.save(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ModalFooter {
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: @tr("Save");
+            primary: true;
+            enabled: root.interactive && !EditorState.saving;
+            min-width: 96px;
+            clicked => { root.save(); }
+        }
+        Button {
+            text: @tr("Cancel");
+            enabled: root.interactive;
+            min-width: 96px;
+            clicked => { root.cancel(); }
+        }
+    }
+}

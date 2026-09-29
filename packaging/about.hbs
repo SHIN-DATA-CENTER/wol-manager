@@ -1,0 +1,49 @@
+{{!--
+  cargo-about 0.9.2 template (plain text) for the Rust crate section of THIRD-PARTY-NOTICES.txt.
+  scripts/build.ps1 prepends packaging/notices/{header,coolicons,slint}.txt and writes the
+  result as UTF-8 with BOM and CRLF line endings. Triple braces: no HTML escaping.
+
+  The trailing "@@WOL-MANIFEST@@<path>" lines are machine-readable: build.ps1 removes them and
+  appends the NOTICE files found next to those Cargo.toml files (cargo-about does not collect
+  NOTICE files). Keep the marker in sync with build.ps1.
+--}}
+==============================================================================
+3. Rust crates compiled into wol-manager.exe and wolm.exe
+==============================================================================
+
+The following Rust crates (target x86_64-pc-windows-msvc, normal dependencies
+only, including the procedural macros used to compile them) are compiled into
+the programs. Each crate is listed with the license expression it declares.
+Where a crate offers a choice of licenses, WoL Manager uses it under the
+license in whose section it is listed further below.
+
+The Slint crates (slint, slint-macros, i-slint-*) are used under the Slint
+Royalty-free Desktop, Mobile, and Web Applications License 2.0
+(LicenseRef-Slint-Royalty-free-2.0); its full text is in section 2 above.
+
+License overview:
+{{#each overview}}
+  {{{name}}} ({{{id}}}): {{count}} crate(s)
+{{/each}}
+
+Crates:
+{{#each crates}}
+  {{{package.name}}} {{{package.version}}}: {{{license}}}
+{{/each}}
+
+License texts:
+{{#each licenses}}
+
+------------------------------------------------------------------------------
+{{{name}}} ({{{id}}})
+Used by:
+{{#each used_by}}
+  {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}} <{{{crate.repository}}}>{{/if}}
+{{/each}}
+------------------------------------------------------------------------------
+
+{{{text}}}
+{{/each}}
+{{#each crates}}
+@@WOL-MANIFEST@@{{{package.manifest_path}}}
+{{/each}}

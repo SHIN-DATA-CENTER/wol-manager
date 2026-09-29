@@ -1,0 +1,23 @@
+# Build output
+/target/
+/dist/
+/.cache/
+
+# coolicons (CC BY 4.0) must never be committed -- not even converted/derived files.
+# Fetch it with scripts\fetch-coolicons.ps1; build.rs reads it at build time only.
+/coolicons.v4.1/
+/coolicons*.zip
+*.ico
+*.svg
+*.png
+*.bmp
+*.ttf
+*.woff
+*.woff2
+*.iconjar/
+
+# Editors / OS
+/.vs/
+/.idea/
+.DS_Store
+Thumbs.db

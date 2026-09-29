@@ -1,0 +1,752 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: wol-manager\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "WoL Manager (portable)"
+msgstr "WoL Manager (ポータブル)"
+
+msgid "File"
+msgstr "ファイル"
+
+msgid "New host…"
+msgstr "新しいホスト…"
+
+msgid "Settings…"
+msgstr "設定…"
+
+msgid "Open settings folder"
+msgstr "設定フォルダーを開く"
+
+msgid "Close window"
+msgstr "ウィンドウを閉じる"
+
+msgid "Exit"
+msgstr "終了"
+
+msgid "Host"
+msgstr "ホスト"
+
+msgid "Wake"
+msgstr "起動"
+
+msgid "Edit…"
+msgstr "編集…"
+
+msgid "Duplicate"
+msgstr "複製"
+
+msgid "Copy MAC address"
+msgstr "MAC アドレスをコピー"
+
+msgid "Copy address"
+msgstr "アドレスをコピー"
+
+msgid "Delete…"
+msgstr "削除…"
+
+msgid "Wake all visible…"
+msgstr "表示中のホストをすべて起動…"
+
+msgid "Refresh status"
+msgstr "状態を更新"
+
+msgid "View"
+msgstr "表示"
+
+msgid "Search"
+msgstr "検索"
+
+msgid "Group"
+msgstr "グループ"
+
+msgid "All groups"
+msgstr "すべてのグループ"
+
+msgid "Help"
+msgstr "ヘルプ"
+
+msgid "Command line (wolm)…"
+msgstr "コマンドライン (wolm)…"
+
+msgid "Website"
+msgstr "Web サイト"
+
+msgid "About WoL Manager"
+msgstr "WoL Manager について"
+
+msgid "Status"
+msgstr "状態"
+
+msgid "Name"
+msgstr "名前"
+
+msgid "MAC address"
+msgstr "MAC アドレス"
+
+msgid "Address"
+msgstr "アドレス"
+
+msgid "Wake {0}"
+msgstr "{0} を起動"
+
+msgid "More actions"
+msgstr "その他の操作"
+
+msgid "More actions for {0}"
+msgstr "{0} のその他の操作"
+
+msgid "The settings file could not be read."
+msgstr "設定ファイルを読み込めませんでした。"
+
+msgid "Settings can't be saved."
+msgstr "設定を保存できません。"
+
+msgid "Opened read-only."
+msgstr "読み取り専用で開いています。"
+
+msgid "The portable marker is ignored."
+msgstr "ポータブル用のマーカーは無視されます。"
+
+msgid "The notification area icon is not available."
+msgstr "通知領域のアイコンを使用できません。"
+
+msgid "WoL Manager will not overwrite the file. Fix it or restore config.toml.bak, then reload."
+msgstr "WoL Manager はこのファイルを上書きしません。ファイルを修正するか config.toml.bak から復元し、再読み込みしてください。"
+
+msgid "The settings folder is not writable. Changes will fail until this is fixed."
+msgstr "設定フォルダーに書き込めません。解決するまで変更は保存されません。"
+
+msgid "The settings file was written by a newer version of WoL Manager. Changes can't be saved."
+msgstr "この設定ファイルは新しいバージョンの WoL Manager で作成されています。変更は保存できません。"
+
+msgid "This is an installed copy, so wol-manager.portable next to the app is ignored and settings stay in AppData."
+msgstr "インストール版のため、アプリと同じフォルダーにある wol-manager.portable は無視され、設定は AppData に保存されます。"
+
+msgid "Closing the window will exit WoL Manager."
+msgstr "ウィンドウを閉じると WoL Manager は終了します。"
+
+msgid "Reload"
+msgstr "再読み込み"
+
+msgid "Open folder"
+msgstr "フォルダーを開く"
+
+msgctxt "group filter"
+msgid "All groups"
+msgstr "すべて"
+
+msgid "No hosts yet"
+msgstr "ホストが登録されていません"
+
+msgid "Add a computer by its MAC address to wake it over the network."
+msgstr "MAC アドレスを登録すると、ネットワーク経由でコンピューターを起動できます。"
+
+msgid "Add host"
+msgstr "ホストを追加"
+
+msgid "You can also use the command line:"
+msgstr "コマンドラインからも操作できます:"
+
+msgid "No hosts match the search or group filter."
+msgstr "検索条件またはグループに一致するホストはありません。"
+
+msgid "Clear filter"
+msgstr "絞り込みを解除"
+
+msgid "No hosts"
+msgstr "ホストなし"
+
+msgid "{0} of {n} host online"
+msgid_plural "{0} of {n} hosts online"
+msgstr[0] "{n} 台中 {0} 台がオンライン"
+
+msgid "{0} shown"
+msgstr "{0} 台を表示中"
+
+msgid "Checking status…"
+msgstr "状態を確認中…"
+
+msgid "Last checked {0}"
+msgstr "最終確認 {0}"
+
+msgid "Not checked yet"
+msgstr "まだ確認していません"
+
+msgid "Auto check off"
+msgstr "自動確認オフ"
+
+msgid "Refresh"
+msgstr "更新"
+
+msgid "Search hosts (Ctrl+F)"
+msgstr "ホストを検索 (Ctrl+F)"
+
+msgid "Settings (Ctrl+,)"
+msgstr "設定 (Ctrl+,)"
+
+msgid "Ping (ICMP)"
+msgstr "Ping (ICMP)"
+
+msgid "TCP port"
+msgstr "TCP ポート"
+
+msgid "Don't check"
+msgstr "確認しない"
+
+msgid "Automatic (ping, then TCP)"
+msgstr "自動 (Ping の後に TCP)"
+
+msgid "Checking…"
+msgstr "確認中…"
+
+msgid "Online"
+msgstr "オンライン"
+
+msgid "Offline"
+msgstr "オフライン"
+
+msgid "Waking…"
+msgstr "起動中…"
+
+msgid "No response"
+msgstr "応答なし"
+
+msgid "Not monitored"
+msgstr "監視なし"
+
+msgid "Unknown"
+msgstr "未確認"
+
+msgid "Answered ping in {0} ms"
+msgstr "Ping に {0} ms で応答しました"
+
+msgid "Answered ping"
+msgstr "Ping に応答しました"
+
+msgid "Answered on a TCP port in {0} ms"
+msgstr "TCP ポートに {0} ms で応答しました"
+
+msgid "Answered on a TCP port"
+msgstr "TCP ポートに応答しました"
+
+msgid "The host answered the last check."
+msgstr "前回の確認で応答がありました。"
+
+msgid "The host did not answer the last check."
+msgstr "前回の確認で応答がありませんでした。"
+
+msgid "Magic packet sent. Waiting for the host to answer…"
+msgstr "マジック パケットを送信しました。応答を待っています…"
+
+msgid "The host did not answer after the magic packet was sent."
+msgstr "マジック パケットの送信後、応答がありませんでした。"
+
+msgid "Checking whether the host answers…"
+msgstr "応答があるか確認しています…"
+
+msgid "No address is set, so the status can't be checked."
+msgstr "アドレスが設定されていないため、状態を確認できません。"
+
+msgid "Status checks are turned off for this host."
+msgstr "このホストの状態確認はオフになっています。"
+
+msgid "Not checked yet."
+msgstr "まだ確認していません。"
+
+msgid "Required."
+msgstr "必須です。"
+
+msgid "Enter a MAC address such as AA:BB:CC:DD:EE:FF."
+msgstr "AA:BB:CC:DD:EE:FF のような形式で MAC アドレスを入力してください。"
+
+msgid ""
+"Multicast, broadcast and all-zero addresses can't be woken. The first byte "
+"must be even."
+msgstr ""
+"マルチキャスト、ブロードキャスト、すべて 0 のアドレスは起動の対象にできません。"
+"1 バイト目は偶数にしてください。"
+
+msgid "Enter an IPv4 address or a host name."
+msgstr "IPv4 アドレスまたはホスト名を入力してください。"
+
+msgid "Enter a port number from 1 to 65535."
+msgstr "1 ～ 65535 のポート番号を入力してください。"
+
+msgid "Enter port numbers from 1 to 65535, separated by commas."
+msgstr "1 ～ 65535 のポート番号をカンマ区切りで入力してください。"
+
+msgid "Enter up to 16 ports."
+msgstr "ポートは 16 個までにしてください。"
+
+msgid "Enter 6 bytes in hex, such as 01:23:45:67:89:AB."
+msgstr "01:23:45:67:89:AB のような 6 バイトの 16 進数を入力してください。"
+
+msgid "Enter one target per line as host or host:port."
+msgstr "送信先は 1 行に 1 つずつ、ホストまたはホスト:ポートの形式で入力してください。"
+
+msgid "A host with this name already exists."
+msgstr "この名前のホストは既に存在します。"
+
+msgid "The name can't be a MAC address."
+msgstr "MAC アドレスを名前にすることはできません。"
+
+msgid "Use 64 characters or fewer."
+msgstr "64 文字以内で入力してください。"
+
+msgid "Contains kana. Turn off the IME and type it again."
+msgstr "かなが含まれています。IME をオフにして入力し直してください。"
+
+msgid "Portable"
+msgstr "ポータブル"
+
+msgid "Custom location"
+msgstr "カスタムの場所"
+
+msgid "Standard (AppData)"
+msgstr "標準 (AppData)"
+
+msgid "Dismiss"
+msgstr "閉じる"
+
+msgid "Show WoL Manager"
+msgstr "WoL Manager を表示"
+
+msgid "Wake host"
+msgstr "ホストを起動"
+
+msgid "{0} (online)"
+msgstr "{0} (オンライン)"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Version {0}"
+msgstr "バージョン {0}"
+
+msgid "Wake-on-LAN for Windows, with a command line tool (wolm)."
+msgstr "Windows 用の Wake-on-LAN ツール (コマンドライン版 wolm 付き)"
+
+msgid "License:"
+msgstr "ライセンス:"
+
+msgid "Built with Slint"
+msgstr "Slint で作成"
+
+msgid "Slint is used under the Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0."
+msgstr "Slint は Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0 に基づいて使用しています。"
+
+msgid "Slint Royalty-free License 2.0"
+msgstr "Slint Royalty-free License 2.0"
+
+msgid "Icons"
+msgstr "アイコン"
+
+msgid "Icons: coolicons v4.1 by Kryston Schwarze — CC BY 4.0"
+msgstr "アイコン: coolicons v4.1 by Kryston Schwarze — CC BY 4.0"
+
+msgid "coolicons"
+msgstr "coolicons"
+
+msgid "CC BY 4.0 license"
+msgstr "CC BY 4.0 ライセンス"
+
+msgid "Some icons were recolored, placed on a colored plate and converted to bitmaps (application and tray icons)."
+msgstr "一部のアイコンは、着色、色付きプレートへの配置、ビットマップへの変換を行って使用しています (アプリと通知領域のアイコン)。"
+
+msgid "The icons are not covered by the Apache License 2.0 of WoL Manager."
+msgstr "アイコンは WoL Manager の Apache License 2.0 の対象外です。"
+
+msgid "Third-party licenses"
+msgstr "サードパーティのライセンス"
+
+msgid "Delete host?"
+msgstr "ホストを削除しますか?"
+
+msgid "Wake all visible hosts?"
+msgstr "表示中のホストをすべて起動しますか?"
+
+msgid "Switch to portable mode?"
+msgstr "ポータブル モードに切り替えますか?"
+
+msgid "Turn off portable mode?"
+msgstr "ポータブル モードをオフにしますか?"
+
+msgid "Replace the existing data folder?"
+msgstr "既存の data フォルダーを置き換えますか?"
+
+msgid "Save as a new host?"
+msgstr "新しいホストとして保存しますか?"
+
+msgid "“{0}” will be removed from the list. This can't be undone."
+msgstr "「{0}」を一覧から削除します。この操作は元に戻せません。"
+
+msgid "A magic packet will be sent to {n} host that is shown in the list."
+msgid_plural "Magic packets will be sent to the {n} hosts that are shown in the list."
+msgstr[0] "一覧に表示されている {n} 台のホストにマジック パケットを送信します。"
+
+msgid "Settings will be stored in the following folder next to wol-manager.exe. The file wol-manager.portable marks this copy as portable."
+msgstr "設定は wol-manager.exe と同じ場所にある次のフォルダーに保存されます。ポータブル版であることを示すファイル wol-manager.portable も作成されます。"
+
+msgid "Settings will be stored in AppData again. The data folder next to wol-manager.exe is kept."
+msgstr "設定は再び AppData に保存されます。wol-manager.exe と同じ場所にある data フォルダーは削除されません。"
+
+msgid "A data folder with settings already exists here. Replace it with the current settings, or keep using the existing settings?"
+msgstr "この場所には設定の入った data フォルダーが既にあります。現在の設定で置き換えますか? それとも既存の設定をそのまま使いますか?"
+
+msgid "“{0}” was deleted by another program while you were editing it. Save it as a new host?"
+msgstr "編集中に「{0}」が別のプログラムによって削除されました。新しいホストとして保存しますか?"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Switch"
+msgstr "切り替える"
+
+msgid "Turn off"
+msgstr "オフにする"
+
+msgid "Replace"
+msgstr "置き換える"
+
+msgid "Save as new"
+msgstr "新規として保存"
+
+msgid "Copy the current settings"
+msgstr "現在の設定をコピーする"
+
+msgid "Hosts that are already online are included."
+msgstr "既にオンラインのホストも含まれます。"
+
+msgid "Keep existing"
+msgstr "既存の設定を使う"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "Keep current pinning ({n} adapter)"
+msgid_plural "Keep current pinning ({n} adapters)"
+msgstr[0] "現在の指定を維持 ({n} 個のアダプター)"
+
+msgid "Automatic (all suitable adapters)"
+msgstr "自動 (使用できるすべてのアダプター)"
+
+msgid "Edit host"
+msgstr "ホストの編集"
+
+msgid "Duplicate host"
+msgstr "ホストの複製"
+
+msgid "e.g. Office PC"
+msgstr "例: 事務所の PC"
+
+msgid "Found the MAC address of this IP address."
+msgstr "この IP アドレスの MAC アドレスを取得しました。"
+
+msgid "Get from IP"
+msgstr "IP から取得"
+
+msgid "No device answered at this IP address. Make sure it is on and try again."
+msgstr "この IP アドレスから応答がありませんでした。電源が入っていることを確認して、もう一度お試しください。"
+
+msgid "“Get from IP” only works for addresses in a local subnet of this PC."
+msgstr "「IP から取得」は、この PC と同じサブネット内のアドレスでのみ使用できます。"
+
+msgid "The MAC address could not be looked up."
+msgstr "MAC アドレスを取得できませんでした。"
+
+msgid "IPv4 address or host name. Used for status checks and “Get from IP”."
+msgstr "IPv4 アドレスまたはホスト名。状態の確認と「IP から取得」に使用します。"
+
+msgid "e.g. 192.168.1.10 or nas.local"
+msgstr "例: 192.168.1.10 または nas.local"
+
+msgid "None"
+msgstr "なし"
+
+msgid "Choose an existing group"
+msgstr "既存のグループから選択"
+
+msgid "Notes"
+msgstr "メモ"
+
+msgid "Optional"
+msgstr "任意"
+
+msgid "Advanced settings"
+msgstr "詳細設定"
+
+msgid "Broadcast, extra targets, port, network adapter, SecureOn, status check"
+msgstr "ブロードキャスト、追加の送信先、ポート、ネットワーク アダプター、SecureOn、状態の確認"
+
+msgid "Send to the broadcast address of each network adapter"
+msgstr "各ネットワーク アダプターのブロードキャスト アドレスに送信する"
+
+msgid "Additional targets"
+msgstr "追加の送信先"
+
+msgid "One per line, e.g. 192.168.20.255 or wol-relay.example.lan:9. Needed for other subnets."
+msgstr "1 行に 1 つずつ入力します (例: 192.168.20.255、wol-relay.example.lan:9)。別のサブネットにあるホストに必要です。"
+
+msgid "Port"
+msgstr "ポート"
+
+msgid "Default ({0})"
+msgstr "既定 ({0})"
+
+msgid "Network adapter"
+msgstr "ネットワーク アダプター"
+
+msgid "A pinned adapter is not present on this PC. No packet is sent through it."
+msgstr "指定したアダプターがこの PC にありません。このアダプターからは送信されません。"
+
+msgid "SecureOn password"
+msgstr "SecureOn パスワード"
+
+msgid "Not used"
+msgstr "使用しない"
+
+msgid "Saved as plain text in config.toml. Only needed if the network card requires it."
+msgstr "config.toml に平文で保存されます。ネットワーク カードで必要な場合にだけ入力してください。"
+
+msgid "Status check"
+msgstr "状態の確認"
+
+msgid "TCP ports"
+msgstr "TCP ポート"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Close (Esc)"
+msgstr "閉じる (Esc)"
+
+msgid "Appearance"
+msgstr "外観"
+
+msgid "Language"
+msgstr "言語"
+
+msgid "Use system setting"
+msgstr "システムの設定に従う"
+
+msgid "Theme"
+msgstr "テーマ"
+
+msgid "Light"
+msgstr "ライト"
+
+msgid "Dark"
+msgstr "ダーク"
+
+msgid "Notification area"
+msgstr "通知領域"
+
+msgid "The notification area icon could not be created, so these options are unavailable."
+msgstr "通知領域にアイコンを作成できなかったため、これらのオプションは使用できません。"
+
+msgid "Show an icon in the notification area"
+msgstr "通知領域にアイコンを表示する"
+
+msgid "Keep running in the notification area when the window is closed"
+msgstr "ウィンドウを閉じても通知領域で動作を続ける"
+
+msgid "Minimize to the notification area"
+msgstr "最小化で通知領域に格納する"
+
+msgid "Start in the notification area"
+msgstr "起動時に通知領域に格納する"
+
+msgid "The window is not shown at startup."
+msgstr "起動時にウィンドウを表示しません。"
+
+msgid "Status checks"
+msgstr "状態の確認"
+
+msgid "Check status automatically"
+msgstr "状態を自動で確認"
+
+msgid "While the window is hidden, only waking hosts are checked."
+msgstr "ウィンドウが非表示の間は、起動中のホストだけを確認します。"
+
+msgid "Off"
+msgstr "オフ"
+
+msgid "Every 10 seconds"
+msgstr "10 秒ごと"
+
+msgid "Every 30 seconds"
+msgstr "30 秒ごと"
+
+msgid "Every minute"
+msgstr "1 分ごと"
+
+msgid "Every 5 minutes"
+msgstr "5 分ごと"
+
+msgid "Custom ({0} s)"
+msgstr "カスタム ({0} 秒)"
+
+msgid "How to check"
+msgstr "確認の方法"
+
+msgid "Default for hosts without their own setting (host editor > Advanced settings)."
+msgstr "ホストごとの設定 (ホストの編集 > 詳細設定) がないホストに使われます。"
+
+msgid "Tried when a host doesn't answer ping (automatic) or is checked by TCP. Separate them with commas."
+msgstr "Ping に応答しないとき (自動) と、TCP で確認するときに使います。カンマで区切って入力します。"
+
+msgid "Response timeout"
+msgstr "応答の待ち時間"
+
+msgid "How long one check waits for an answer."
+msgstr "1 回の確認で応答を待つ時間です。"
+
+msgid "ms"
+msgstr "ミリ秒"
+
+msgid "Wait for the host to wake up"
+msgstr "起動の待ち時間"
+
+msgid "After a magic packet is sent, the status is checked every 3 seconds until this time has passed."
+msgstr "マジック パケットの送信後、この時間が経過するまで 3 秒ごとに状態を確認します。"
+
+msgid "seconds"
+msgstr "秒"
+
+msgid "Magic packet"
+msgstr "マジック パケット"
+
+msgid "Default port"
+msgstr "既定のポート"
+
+msgid "Usually 9. Some devices use 7."
+msgstr "通常は 9 です。7 を使う機器もあります。"
+
+msgid "Packets per wake"
+msgstr "送信回数"
+
+msgid "Interval between packets"
+msgstr "送信間隔"
+
+msgid "Also use VPN and virtual adapters"
+msgstr "VPN と仮想アダプターも使用する"
+
+msgid "For example WireGuard or Hyper-V adapters. Keep this off so that packets go out through the physical network."
+msgstr "WireGuard や Hyper-V のアダプターなど。通常はオフにして、物理ネットワークから送信します。"
+
+msgid "Settings location"
+msgstr "設定の保存場所"
+
+msgid "Portable mode"
+msgstr "ポータブル モード"
+
+msgid "Not available in the installed version. Use the ZIP version to carry WoL Manager on a USB drive."
+msgstr "インストール版では使用できません。USB ドライブなどで持ち運ぶ場合は ZIP 版を使用してください。"
+
+msgid "Not available: the folder of wol-manager.exe is not writable."
+msgstr "使用できません: wol-manager.exe のフォルダーに書き込めません。"
+
+msgid "Not available: the location is set by --config-dir or WOL_MANAGER_CONFIG_DIR."
+msgstr "使用できません: 保存場所が --config-dir または WOL_MANAGER_CONFIG_DIR で指定されています。"
+
+msgid "Moving the settings…"
+msgstr "設定を移動しています…"
+
+msgid "Keep the settings in a “data” folder next to wol-manager.exe."
+msgstr "設定を wol-manager.exe と同じ場所の「data」フォルダーに保存します。"
+
+msgid "Command line (wolm)"
+msgstr "コマンドライン (wolm)"
+
+msgid "wolm.exe was not found next to WoL Manager."
+msgstr "WoL Manager と同じ場所に wolm.exe が見つかりません。"
+
+msgid "Example:"
+msgstr "例:"
+
+msgid "Add wolm to the user PATH"
+msgstr "wolm をユーザーの PATH に追加する"
+
+msgid "Updating PATH…"
+msgstr "PATH を更新しています…"
+
+msgid "Registered. Open a new terminal window to use wolm."
+msgstr "登録済みです。wolm を使うには新しいターミナル ウィンドウを開いてください。"
+
+msgid "Not registered. wolm can still be run with its full path."
+msgstr "未登録です。wolm はフル パスを指定すれば実行できます。"
+
+msgid "PATH could not be changed."
+msgstr "PATH を変更できませんでした。"
+
+msgid "Checking the PATH…"
+msgstr "PATH を確認しています…"
+
+msgid "System PATH (all users)"
+msgstr "システムの PATH (すべてのユーザー)"
+
+msgid "Registered by the installer. wolm can be used in any new terminal window."
+msgstr "インストーラーによって登録されています。新しいターミナル ウィンドウで wolm を使用できます。"
+
+msgid ""
+"Not registered. Run the installer again with “Add the wolm command to PATH” "
+"selected."
+msgstr ""
+"未登録です。「wolm コマンドを PATH に追加」を選択してインストーラーを再実行して"
+"ください。"
+
+msgid "The system PATH could not be read."
+msgstr "システムの PATH を読み取れませんでした。"
+
+msgid "Registered"
+msgstr "登録済み"
+
+msgid "Not registered"
+msgstr "未登録"
+
+msgid "Display"
+msgstr "表示"
+
+msgid "Renderer"
+msgstr "描画方式"
+
+msgid "Takes effect after WoL Manager is restarted. Choose Software if the window stays blank or flickers."
+msgstr "WoL Manager の再起動後に反映されます。ウィンドウが真っ白のままになったり、ちらついたりする場合は「ソフトウェア」を選択してください。"
+
+msgid "Automatic (recommended)"
+msgstr "自動 (推奨)"
+
+msgid "Software"
+msgstr "ソフトウェア"
+
+msgid "The environment variable SLINT_BACKEND={0} is set and takes precedence over this setting."
+msgstr "環境変数 SLINT_BACKEND={0} が設定されているため、そちらが優先されます。"
+
+msgid "Troubleshooting"
+msgstr "トラブルシューティング"
+
+msgid "Log files"
+msgstr "ログ ファイル"
+
+msgid "Open log folder"
+msgstr "ログ フォルダーを開く"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "General"
+msgstr "全般"
+
+msgid "Wake & status"
+msgstr "起動と状態確認"
+
+msgid "Storage & command line"
+msgstr "保存場所とコマンドライン"
+
+msgid "Advanced"
+msgstr "詳細"

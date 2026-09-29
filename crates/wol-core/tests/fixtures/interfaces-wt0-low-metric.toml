@@ -1,0 +1,78 @@
+# Anonymized network interface list modelled on the development machine.
+#
+# The real machine has a Netbird WireGuard tunnel "wt0" (IfType 53) whose interface metric
+# (5) is LOWER than the Ethernet LAN's (20). Windows sends an unbound datagram to
+# 255.255.255.255 through the lowest-metric interface, i.e. into the VPN, so WoL would
+# silently fail. The selection must therefore ignore metrics and skip wt0 by default.
+#
+# Addresses use documentation / shared ranges (192.0.2.0/24, 100.64.0.0/10, 10.8.0.0/24),
+# GUIDs and MACs are made up. The Japanese friendly names are kept on purpose.
+# Metrics are not part of NetInterface; they are noted in comments only.
+
+[[interface]]
+# metric 5
+index = 7
+guid = "{00000000-0000-0000-0000-00000000000A}"
+friendly_name = "wt0"
+description = "WireGuard Tunnel"
+if_type = 53
+oper_up = true
+ipv4 = ["100.64.0.5/10"]
+
+[[interface]]
+# metric 20
+index = 12
+guid = "{00000000-0000-0000-0000-00000000000B}"
+friendly_name = "イーサネット"
+description = "Intel(R) Ethernet Connection (17) I219-V"
+if_type = 6
+oper_up = true
+mac = "02:00:5E:00:00:0B"
+ipv4 = ["192.0.2.10/24"]
+
+[[interface]]
+index = 1
+guid = "{00000000-0000-0000-0000-000000000001}"
+friendly_name = "Loopback Pseudo-Interface 1"
+description = "Software Loopback Interface 1"
+if_type = 24
+oper_up = true
+ipv4 = ["127.0.0.1/8"]
+
+[[interface]]
+# Disconnected Bluetooth PAN with a tentative APIPA address.
+index = 15
+guid = "{00000000-0000-0000-0000-00000000000C}"
+friendly_name = "Bluetooth ネットワーク接続"
+description = "Bluetooth Device (Personal Area Network)"
+if_type = 6
+oper_up = false
+ipv4 = ["169.254.53.70/16"]
+
+[[interface]]
+index = 18
+guid = "{00000000-0000-0000-0000-00000000000D}"
+friendly_name = "Wi-Fi"
+description = "Intel(R) Wi-Fi 6E AX211 160MHz"
+if_type = 71
+oper_up = true
+ipv4 = []
+
+[[interface]]
+# VPN adapter that reports an Ethernet ifType.
+index = 21
+guid = "{00000000-0000-0000-0000-00000000000E}"
+friendly_name = "OpenVPN TAP"
+description = "TAP-Windows Adapter V9"
+if_type = 6
+oper_up = true
+ipv4 = ["10.8.0.2/24"]
+
+[[interface]]
+index = 25
+guid = "{00000000-0000-0000-0000-00000000000F}"
+friendly_name = "vEthernet (Default Switch)"
+description = "Hyper-V Virtual Ethernet Adapter"
+if_type = 6
+oper_up = true
+ipv4 = ["169.254.100.1/16"]

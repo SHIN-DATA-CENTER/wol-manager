@@ -1,0 +1,581 @@
+// Main window content: notices, toolbar, host list, empty states and status bar.
+
+import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+import { CoolIcons, AppArt } from "@coolicons";
+import { HostRow, HostStatus, Notice, NoticeKind, ToastKind, OverlayKind, StorageMode } from "types.slint";
+import { Theme } from "theme.slint";
+import { AppState, Texts } from "state.slint";
+import {
+    Icon, IconButton, Divider, CodeChip, InfoBar, DropdownButton, PopupFrame, PopupItem,
+    PopupListKeys, BusySpinner, TipBubble,
+} from "widgets.slint";
+import { Columns, ColumnHeader, HostRowView } from "host-row.slint";
+
+/// InfoBar for one AppState notice.
+component NoticeBar inherits InfoBar {
+    in property <Notice> notice;
+    severity: root.notice.kind == NoticeKind.config-load-failed ? ToastKind.error
+        : root.notice.kind == NoticeKind.tray-unavailable ? ToastKind.info
+        : ToastKind.warning;
+    title: root.notice.kind == NoticeKind.config-load-failed ? @tr("The settings file could not be read.")
+        : root.notice.kind == NoticeKind.config-read-only ? @tr("Settings can't be saved.")
+        : root.notice.kind == NoticeKind.config-newer-version ? @tr("Opened read-only.")
+        : root.notice.kind == NoticeKind.portable-marker-ignored ? @tr("The portable marker is ignored.")
+        : @tr("The notification area icon is not available.");
+    message: root.notice.kind == NoticeKind.config-load-failed ? @tr("WoL Manager will not overwrite the file. Fix it or restore config.toml.bak, then reload.")
+        : root.notice.kind == NoticeKind.config-read-only ? @tr("The settings folder is not writable. Changes will fail until this is fixed.")
+        : root.notice.kind == NoticeKind.config-newer-version ? @tr("The settings file was written by a newer version of WoL Manager. Changes can't be saved.")
+        : root.notice.kind == NoticeKind.portable-marker-ignored ? @tr("This is an installed copy, so wol-manager.portable next to the app is ignored and settings stay in AppData.")
+        : @tr("Closing the window will exit WoL Manager.");
+    detail: root.notice.detail;
+    action-text: root.notice.kind == NoticeKind.config-load-failed ? @tr("Reload") : "";
+    secondary-action-text: root.notice.kind == NoticeKind.config-load-failed || root.notice.kind == NoticeKind.config-read-only ? @tr("Open folder") : "";
+    closable: root.notice.kind != NoticeKind.config-load-failed;
+    action => { AppState.notice-action(root.notice.kind); }
+    secondary-action => { AppState.open-config-folder(); }
+    close => { AppState.dismiss-notice(root.notice.kind); }
+}
+
+/// Group filter: "All groups" + AppState.groups. List position 0 = all, i + 1 = groups[i].
+component GroupPicker inherits DropdownButton {
+    in property <bool> interactive: true;
+    icon: CoolIcons.groups;
+    text: AppState.group-filter == "" ? @tr("group filter" => "All groups") : AppState.group-filter;
+    enabled: root.interactive && AppState.groups.length > 0;
+    accessible-label: @tr("Group");
+    clicked => { popup.show(); }
+
+    function choose(position: int) {
+        // No `let` string here: Slint 1.18.1's Rust codegen moves a string local into the
+        // property assignment and then fails to compile its second use.
+        AppState.group-filter = position <= 0 ? "" : AppState.groups[position - 1];
+        AppState.group-filter-changed(AppState.group-filter);
+        popup.close();
+    }
+
+    popup := PopupWindow {
+        x: 0;
+        y: root.height + 4px;
+        width: max(root.width, 200px);
+        close-policy: PopupClosePolicy.close-on-click-outside;
+        forward-focus: keys;
+        keys := PopupListKeys {
+            count: AppState.groups.length + 1;
+            // 0 = "All groups"; the checked group's item moves it there in its init.
+            current: 0;
+            choose(p) => { root.choose(p); }
+            close => { popup.close(); }
+            PopupFrame {
+                VerticalLayout {
+                    padding: 4px;
+                    spacing: 2px;
+                    PopupItem {
+                        text: @tr("All groups");
+                        checked: AppState.group-filter == "";
+                        highlighted: keys.current == 0;
+                        clicked => { root.choose(0); }
+                    }
+                    for g[i] in AppState.groups : PopupItem {
+                        text: g;
+                        checked: AppState.group-filter == g;
+                        highlighted: keys.current == i + 1;
+                        clicked => { root.choose(i + 1); }
+                        init => {
+                            if self.checked {
+                                keys.current = i + 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component EmptyState inherits VerticalLayout {
+    in property <bool> interactive: true;
+    alignment: center;
+    spacing: 10px;
+    padding: 24px;
+
+    HorizontalLayout {
+        alignment: center;
+        Icon {
+            source: CoolIcons.host;
+            size: 48px;
+            tint: Theme.text-tertiary;
+        }
+    }
+    Text {
+        text: @tr("No hosts yet");
+        font-size: Theme.font-title;
+        font-weight: 600;
+        color: Theme.text;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    Text {
+        text: @tr("Add a computer by its MAC address to wake it over the network.");
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: center;
+        padding-top: 6px;
+        Button {
+            text: @tr("Add host");
+            icon: CoolIcons.add;
+            colorize-icon: true;
+            primary: true;
+            enabled: root.interactive;
+            clicked => { AppState.add-host(); }
+        }
+    }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        padding-top: 10px;
+        Icon {
+            source: CoolIcons.terminal;
+            size: 16px;
+            tint: Theme.text-secondary;
+            cross-axis-self-alignment: center;
+        }
+        Text {
+            text: @tr("You can also use the command line:");
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+        }
+        CodeChip {
+            text: "wolm --help";
+            font-size: 12px;
+            cross-axis-self-alignment: center;
+        }
+    }
+}
+
+component NoMatches inherits VerticalLayout {
+    in property <bool> interactive: true;
+    callback clear-filter();
+    alignment: center;
+    spacing: 10px;
+    padding: 24px;
+    HorizontalLayout {
+        alignment: center;
+        Icon {
+            source: CoolIcons.search;
+            size: 40px;
+            tint: Theme.text-tertiary;
+        }
+    }
+    Text {
+        text: @tr("No hosts match the search or group filter.");
+        color: Theme.text-secondary;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: center;
+        Button {
+            text: @tr("Clear filter");
+            enabled: root.interactive;
+            clicked => { root.clear-filter(); }
+        }
+    }
+}
+
+component StatusBar inherits Rectangle {
+    height: 28px;
+    background: Theme.chrome;
+
+    property <string> counts: AppState.host-count == 0 ? @tr("No hosts")
+        : AppState.hosts.length != AppState.host-count
+            ? @tr("{0} of {n} host online" | "{0} of {n} hosts online" % AppState.host-count, AppState.online-count) + "  ·  " + @tr("{0} shown", AppState.hosts.length)
+            : @tr("{0} of {n} host online" | "{0} of {n} hosts online" % AppState.host-count, AppState.online-count);
+
+    Divider { y: 0; width: parent.width; }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 16px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            horizontal-stretch: 0;
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: AppState.online-count > 0 ? Theme.status-online : Theme.status-offline;
+                cross-axis-self-alignment: center;
+            }
+            Text {
+                text: root.counts;
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                min-width: self.preferred-width;
+            }
+        }
+
+        // Storage mode and folder (elided; the full path is on the Settings > Storage page).
+        HorizontalLayout {
+            spacing: 6px;
+            horizontal-stretch: 1;
+            min-width: 40px;
+            Icon {
+                source: CoolIcons.folder;
+                size: 14px;
+                tint: Theme.text-secondary;
+                cross-axis-self-alignment: center;
+            }
+            Text {
+                text: Texts.storage-mode(AppState.storage-mode) + ":  " + AppState.storage-path;
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+                min-width: 0px;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 6px;
+            horizontal-stretch: 0;
+            if AppState.checking : BusySpinner {
+                width: 12px;
+                height: 12px;
+                cross-axis-self-alignment: center;
+            }
+            Text {
+                text: AppState.checking ? @tr("Checking status…")
+                    : AppState.last-check != "" ? @tr("Last checked {0}", AppState.last-check)
+                    : @tr("Not checked yet");
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                min-width: self.preferred-width;
+            }
+            if AppState.auto-check-off : Text {
+                text: "·  " + @tr("Auto check off");
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                min-width: self.preferred-width;
+            }
+        }
+    }
+}
+
+export component MainView inherits Rectangle {
+    /// False while an overlay or confirm dialog is open: disables every control so that Tab
+    /// focus stays inside the overlay.
+    in property <bool> interactive: true;
+
+    property <bool> show-mac: root.width >= Columns.mac-min-width;
+    property <bool> pulse;
+    /// Host targeted by the open row menu.
+    property <string> menu-id;
+    property <string> menu-address;
+
+    public function focus-search() {
+        search.focus();
+        search.select-all();
+    }
+
+    public function focus-list() {
+        list-focus.focus();
+    }
+
+    function current-row() -> int {
+        if AppState.selected-row >= 0 && AppState.selected-row < AppState.hosts.length
+            && AppState.hosts[AppState.selected-row].id == AppState.selected-id {
+            return AppState.selected-row;
+        }
+        return -1;
+    }
+
+    function select-row(index: int) {
+        if AppState.hosts.length == 0 {
+            return;
+        }
+        let i = max(0, min(AppState.hosts.length - 1, index));
+        AppState.selected-row = i;
+        AppState.selected-id = AppState.hosts[i].id;
+        root.bring-into-view(i);
+    }
+
+    function bring-into-view(index: int) {
+        let top = index * Theme.row-height;
+        if top + list.content-y < 0 {
+            list.content-y = -top;
+        }
+        if top + Theme.row-height + list.content-y > list.visible-height {
+            list.content-y = list.visible-height - top - Theme.row-height;
+        }
+    }
+
+    function open-menu(index: int, id: string, position: Point) {
+        root.menu-id = id;
+        root.menu-address = index >= 0 && index < AppState.hosts.length ? AppState.hosts[index].address : "";
+        list-menu.show(position);
+    }
+
+    function clear-filter() {
+        AppState.search-text = "";
+        AppState.group-filter = "";
+        AppState.search-changed("");
+        AppState.group-filter-changed("");
+    }
+
+    background: Theme.window;
+
+    // Pulse of checking / waking status dots. Runs only while Rust says something animates
+    // (window visible and a host checking or waking), so it never wakes a hidden app.
+    property <bool> animating: AppState.animating;
+    changed animating => {
+        if !self.animating {
+            root.pulse = false;
+        }
+    }
+    Timer {
+        interval: 700ms;
+        running: root.animating;
+        triggered => { root.pulse = !root.pulse; }
+    }
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // ---- InfoBar area ----------------------------------------------------------------------
+        if AppState.notices.length > 0 : VerticalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 10px;
+            padding-bottom: 2px;
+            spacing: 6px;
+            for n in AppState.notices : NoticeBar {
+                notice: n;
+                // Disabled behind dialogs, like every other main-view control (Tab containment).
+                enabled: root.interactive;
+            }
+        }
+
+        // ---- Toolbar ----------------------------------------------------------------------------
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 8px;
+
+            Button {
+                text: @tr("Add host");
+                icon: CoolIcons.add;
+                colorize-icon: true;
+                primary: true;
+                enabled: root.interactive;
+                clicked => { AppState.add-host(); }
+            }
+            Button {
+                text: @tr("Refresh");
+                icon: CoolIcons.refresh;
+                colorize-icon: true;
+                enabled: root.interactive && AppState.host-count > 0 && !AppState.checking;
+                clicked => { AppState.refresh(); }
+            }
+            Rectangle { width: 4px; }
+            search := LineEdit {
+                min-width: 120px;
+                horizontal-stretch: 1;
+                input-type: InputType.search;
+                placeholder-text: @tr("Search hosts (Ctrl+F)");
+                enabled: root.interactive && AppState.host-count > 0;
+                text <=> AppState.search-text;
+                edited(text) => { AppState.search-changed(text); }
+                key-pressed(event) => {
+                    if event.text == Key.Escape && self.text != "" {
+                        self.text = "";
+                        AppState.search-changed("");
+                        return accept;
+                    }
+                    if event.text == Key.DownArrow {
+                        root.focus-list();
+                        if root.current-row() < 0 {
+                            root.select-row(0);
+                        }
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            GroupPicker {
+                interactive: root.interactive;
+                min-width: 120px;
+                max-width: 200px;
+                horizontal-stretch: 0.4;
+            }
+            IconButton {
+                icon: CoolIcons.settings;
+                icon-size: 18px;
+                tooltip: @tr("Settings (Ctrl+,)");
+                enabled: root.interactive;
+                cross-axis-self-alignment: center;
+                clicked => { AppState.open-settings(); }
+            }
+        }
+
+        Divider { }
+
+        // ---- List / empty states --------------------------------------------------------------
+        if AppState.hosts.length > 0 : ColumnHeader {
+            show-mac: root.show-mac;
+        }
+        if AppState.hosts.length > 0 : Divider { }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            // One menu for all rows; opened programmatically (right-click, the ⋮ button,
+            // Shift+F10 / Menu key) for the host in `menu-id`.
+            list-menu := ContextMenuArea {
+                enabled: false;
+                Menu {
+                    MenuItem {
+                        title: @tr("Wake");
+                        activated => { AppState.wake(root.menu-id); }
+                    }
+                    MenuItem {
+                        title: @tr("Edit…");
+                        activated => { AppState.edit-host(root.menu-id); }
+                    }
+                    MenuItem {
+                        title: @tr("Duplicate");
+                        activated => { AppState.duplicate-host(root.menu-id); }
+                    }
+                    MenuSeparator { }
+                    MenuItem {
+                        title: @tr("Copy MAC address");
+                        activated => { AppState.copy-mac(root.menu-id); }
+                    }
+                    MenuItem {
+                        title: @tr("Copy address");
+                        enabled: root.menu-address != "";
+                        activated => { AppState.copy-address(root.menu-id); }
+                    }
+                    MenuSeparator { }
+                    MenuItem {
+                        title: @tr("Delete…");
+                        activated => { AppState.delete-host(root.menu-id); }
+                    }
+                }
+
+                list-focus := FocusScope {
+                    enabled: root.interactive;
+                    key-pressed(event) => {
+                        let cur = root.current-row();
+                        if event.text == Key.UpArrow {
+                            root.select-row(cur < 0 ? 0 : cur - 1);
+                            return accept;
+                        }
+                        if event.text == Key.DownArrow {
+                            root.select-row(cur < 0 ? 0 : cur + 1);
+                            return accept;
+                        }
+                        if event.text == Key.Home {
+                            root.select-row(0);
+                            return accept;
+                        }
+                        if event.text == Key.End {
+                            root.select-row(AppState.hosts.length - 1);
+                            return accept;
+                        }
+                        if event.text == Key.PageUp {
+                            root.select-row(cur - max(1, floor(list.visible-height / Theme.row-height) - 1));
+                            return accept;
+                        }
+                        if event.text == Key.PageDown {
+                            root.select-row(cur + max(1, floor(list.visible-height / Theme.row-height) - 1));
+                            return accept;
+                        }
+                        if cur < 0 {
+                            return reject;
+                        }
+                        if event.text == Key.Return || event.text == Key.F2 {
+                            AppState.edit-host(AppState.selected-id);
+                            return accept;
+                        }
+                        if event.text == Key.Delete {
+                            AppState.delete-host(AppState.selected-id);
+                            return accept;
+                        }
+                        if (event.text == Key.F10 && event.modifiers.shift) || event.text == Key.Menu {
+                            root.open-menu(cur, AppState.selected-id, {
+                                x: 48px,
+                                y: cur * Theme.row-height + list.content-y + Theme.row-height - 8px,
+                            });
+                            return accept;
+                        }
+                        if event.modifiers.control && (event.text == "c" || event.text == "C") {
+                            if event.modifiers.shift {
+                                // Like the menus: nothing to copy for a host without an address.
+                                if AppState.hosts[cur].address != "" {
+                                    AppState.copy-address(AppState.selected-id);
+                                }
+                            } else {
+                                AppState.copy-mac(AppState.selected-id);
+                            }
+                            return accept;
+                        }
+                        return reject;
+                    }
+
+                    list := ListView {
+                        for host[i] in AppState.hosts : HostRowView {
+                            host: host;
+                            selected: host.id == AppState.selected-id;
+                            focused: list-focus.has-focus && host.id == AppState.selected-id;
+                            show-mac: root.show-mac;
+                            interactive: root.interactive;
+                            pulse: root.pulse;
+                            select => {
+                                AppState.selected-row = i;
+                                AppState.selected-id = host.id;
+                                list-focus.focus();
+                            }
+                            activate => { AppState.edit-host(host.id); }
+                            wake => { AppState.wake(host.id); }
+                            menu(p) => {
+                                root.open-menu(i, host.id, {
+                                    x: self.absolute-position.x + p.x - list-menu.absolute-position.x,
+                                    y: self.absolute-position.y + p.y - list-menu.absolute-position.y,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Empty states cover the (empty) list.
+            if AppState.host-count == 0 : Rectangle {
+                background: Theme.window;
+                EmptyState {
+                    interactive: root.interactive;
+                }
+            }
+            if AppState.host-count > 0 && AppState.hosts.length == 0 : Rectangle {
+                background: Theme.window;
+                NoMatches {
+                    interactive: root.interactive;
+                    clear-filter => { root.clear-filter(); }
+                }
+            }
+        }
+
+        StatusBar { }
+    }
+}

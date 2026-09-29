@@ -1,0 +1,146 @@
+// In-window modal frame (Slint has no modal windows): dims the window, swallows pointer input,
+// closes on Esc and hosts a centred card with a title bar.
+//
+// Keyboard containment: Tab only reaches enabled controls, so everything below the topmost
+// layer is disabled — the main view through MainView.interactive, and the editor / settings /
+// about overlays (while the confirm dialog is open above them) through `interactive`
+// (= ModalGate.overlay-enabled), which every overlay binds to the `enabled` of its controls.
+// The frame's own FocusScope (Esc handling) is not a Tab stop.
+
+import { CoolIcons } from "@coolicons";
+import { Theme } from "../theme.slint";
+import { IconButton, Divider } from "../widgets.slint";
+import { AppState, ModalGate } from "../state.slint";
+import { DialogToasts } from "../toasts.slint";
+
+export component ModalFrame inherits Rectangle {
+    in property <string> title;
+    in property <image> title-icon;
+    /// Preferred card width (clamped to the window with a 16 px margin).
+    in property <length> card-width: 520px;
+    /// Fixed card height; 0 = use the content's preferred height (clamped to the window).
+    in property <length> card-height: 0px;
+    in property <bool> close-on-backdrop: false;
+    in property <bool> show-close-button: true;
+    /// True for the confirm dialog, which is always the topmost layer.
+    in property <bool> top-layer: false;
+    /// False while another dialog (the confirm dialog) is open above this one.
+    out property <bool> interactive: root.top-layer || ModalGate.overlay-enabled;
+    callback close-requested();
+    /// Keys that neither the focused control nor the frame (Esc) handled.
+    callback unhandled-key(event: KeyEvent) -> EventResult;
+
+    /// Give the frame keyboard focus (so Esc works even when no field is focused).
+    public function focus-frame() {
+        scope.focus();
+    }
+
+    // A confirm dialog above this overlay took the focus; take it back when it closes.
+    property <bool> confirm-open: AppState.confirm-open;
+    changed confirm-open => {
+        if !self.confirm-open && !root.top-layer {
+            scope.focus();
+        }
+    }
+
+    background: Theme.dim;
+
+    // Swallow clicks on the dimmed backdrop.
+    TouchArea {
+        clicked => {
+            if root.close-on-backdrop && root.interactive {
+                root.close-requested();
+            }
+        }
+    }
+
+    scope := FocusScope {
+        // Only a key handler: not a Tab stop of its own.
+        focus-on-tab-navigation: false;
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.close-requested();
+                return accept;
+            }
+            return root.unhandled-key(event);
+        }
+
+        card := Rectangle {
+            property <length> avail-h: root.height - 32px;
+            width: min(root.width - 32px, root.card-width);
+            height: root.card-height > 0 ? min(self.avail-h, root.card-height) : min(self.avail-h, layout.preferred-height);
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            background: Theme.card;
+            border-radius: Theme.radius-large;
+            border-width: 1px;
+            border-color: Theme.card-border;
+            drop-shadow-blur: 28px;
+            drop-shadow-offset-y: 8px;
+            drop-shadow-color: #00000059;
+            accessible-role: groupbox;
+            accessible-label: root.title;
+
+            // Swallow clicks on the card background.
+            TouchArea { }
+
+            layout := VerticalLayout {
+                padding: 1px;  // keep the card border visible under the footer
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 10px;
+                    padding-top: 12px;
+                    padding-bottom: 8px;
+                    spacing: 10px;
+                    if root.title-icon.width > 0 : Image {
+                        source: root.title-icon;
+                        width: 20px;
+                        height: 20px;
+                        colorize: Theme.text;
+                        cross-axis-self-alignment: center;
+                        accessible-role: none;
+                    }
+                    Text {
+                        text: root.title;
+                        font-size: Theme.font-title;
+                        font-weight: 600;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    if root.show-close-button : IconButton {
+                        icon: CoolIcons.close;
+                        tooltip: @tr("Close (Esc)");
+                        enabled: root.interactive;
+                        cross-axis-self-alignment: center;
+                        clicked => { root.close-requested(); }
+                    }
+                }
+                // Toasts are shown here (instead of bottom-right) while this is the topmost
+                // dialog, so they never cover its buttons.
+                if root.interactive && AppState.toasts.length > 0 : DialogToasts { }
+                @children
+            }
+        }
+    }
+}
+
+/// Button row at the bottom of a modal card (buttons right-aligned, optional left content).
+export component ModalFooter inherits Rectangle {
+    background: Theme.chrome;
+    border-bottom-left-radius: Theme.radius-large;
+    border-bottom-right-radius: Theme.radius-large;
+    Divider {
+        y: 0;
+        width: parent.width;
+    }
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 14px;
+        padding-bottom: 14px;
+        spacing: 8px;
+        @children
+    }
+}

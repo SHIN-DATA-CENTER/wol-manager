@@ -1,0 +1,222 @@
+// One row of the host list plus the shared column geometry (header and rows must agree).
+
+import { Button } from "std-widgets.slint";
+import { CoolIcons } from "@coolicons";
+import { HostRow, HostStatus } from "types.slint";
+import { Theme } from "theme.slint";
+import { Texts } from "state.slint";
+import { StatusBadge, IconButton, TipBubble } from "widgets.slint";
+
+/// Column widths shared by ColumnHeader and HostRowView.
+export global Columns {
+    out property <length> pad-left: 16px;
+    out property <length> pad-right: 8px;
+    out property <length> spacing: 12px;
+    out property <length> status: 116px;
+    out property <length> mac: 148px;
+    out property <length> address: 150px;
+    out property <length> wake: 88px;
+    out property <length> more: 32px;
+    out property <length> actions: self.wake + 4px + self.more;
+    /// Below this list width the MAC column is hidden (plan: 760 px window width).
+    out property <length> mac-min-width: 760px;
+}
+
+/// Column titles. Positioned manually (no layout) so that the header's layout constraints do not
+/// depend on `show-mac`, which itself depends on the window width (would be a binding loop).
+export component ColumnHeader inherits Rectangle {
+    in property <bool> show-mac: true;
+    height: 32px;
+    background: Theme.chrome;
+
+    property <length> status-x: Columns.pad-left;
+    property <length> name-x: self.status-x + Columns.status + Columns.spacing;
+    property <length> address-x: self.width - Columns.pad-right - Columns.actions - Columns.spacing - Columns.address;
+    property <length> mac-x: self.address-x - Columns.spacing - Columns.mac;
+    property <length> name-w: (root.show-mac ? self.mac-x : self.address-x) - Columns.spacing - self.name-x;
+
+    Text {
+        x: root.status-x;
+        width: Columns.status;
+        height: root.height;
+        text: @tr("Status");
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Text {
+        x: root.name-x;
+        width: max(0px, root.name-w);
+        height: root.height;
+        text: @tr("Name");
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    if root.show-mac : Text {
+        x: root.mac-x;
+        width: Columns.mac;
+        height: root.height;
+        text: @tr("MAC address");
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Text {
+        x: root.address-x;
+        width: Columns.address;
+        height: root.height;
+        text: @tr("Address");
+        color: Theme.text-secondary;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+export component HostRowView inherits Rectangle {
+    in property <HostRow> host;
+    in property <bool> selected;
+    /// The list has keyboard focus and this is the selected row (draws the focus rectangle).
+    in property <bool> focused;
+    in property <bool> show-mac: true;
+    /// False while an overlay is open (keeps Tab focus inside the overlay).
+    in property <bool> interactive: true;
+    in property <bool> pulse;
+
+    callback select();
+    /// Double-click: edit.
+    callback activate();
+    callback wake();
+    /// Open the row menu at `position` (relative to this row).
+    callback menu(position: Point);
+
+    property <string> subline: root.host.group != "" && root.host.notes != ""
+        ? root.host.group + "  ·  " + root.host.notes
+        : root.host.group + root.host.notes;
+
+    height: Theme.row-height;
+    background: root.selected ? (ta.has-hover ? Theme.selected-hover : Theme.selected) : ta.has-hover ? Theme.hover : transparent;
+    accessible-role: list-item;
+    accessible-label: root.host.name + ", " + Texts.status(root.host.status);
+    accessible-item-selected: root.selected;
+    accessible-action-default => { root.activate(); }
+
+    ta := TouchArea {
+        enabled: root.interactive;
+        clicked => { root.select(); }
+        double-clicked => { root.activate(); }
+        pointer-event(event) => {
+            if event.button == PointerEventButton.right && event.kind == PointerEventKind.down {
+                root.select();
+                root.menu({ x: self.mouse-x, y: self.mouse-y });
+            }
+        }
+    }
+
+    // Selection pill (fluent list style).
+    Rectangle {
+        x: 4px;
+        width: 3px;
+        height: 18px;
+        border-radius: 1.5px;
+        background: root.selected ? Theme.accent : transparent;
+    }
+
+    HorizontalLayout {
+        padding-left: Columns.pad-left;
+        padding-right: Columns.pad-right;
+        spacing: Columns.spacing;
+
+        status-cell := Rectangle {
+            width: Columns.status;
+            StatusBadge {
+                status: root.host.status;
+                pulse: root.pulse;
+            }
+            Tooltip {
+                TipBubble { text: Texts.status-detail(root.host); }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text {
+                text: root.host.name;
+                font-weight: 600;
+                color: Theme.text;
+                overflow: elide;
+            }
+            if root.subline != "" : Text {
+                text: root.subline;
+                font-size: Theme.font-small;
+                color: Theme.text-secondary;
+                overflow: elide;
+            }
+        }
+
+        if root.show-mac : Text {
+            width: Columns.mac;
+            text: root.host.mac;
+            font-family: Theme.mono-font;
+            font-size: 13px;
+            color: Theme.text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        Text {
+            width: Columns.address;
+            text: root.host.address != "" ? root.host.address : "—";
+            color: root.host.address != "" ? Theme.text : Theme.text-tertiary;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        HorizontalLayout {
+            width: Columns.actions;
+            spacing: 4px;
+            alignment: end;
+            Button {
+                width: Columns.wake;
+                text: @tr("Wake");
+                accessible-label: @tr("Wake {0}", root.host.name);
+                icon: CoolIcons.wake;
+                icon-size: 16px;
+                colorize-icon: true;
+                enabled: root.interactive;
+                cross-axis-self-alignment: center;
+                clicked => {
+                    root.select();
+                    root.wake();
+                }
+            }
+            more := IconButton {
+                icon: CoolIcons.more;
+                tooltip: @tr("More actions");
+                accessible-label: @tr("More actions for {0}", root.host.name);
+                enabled: root.interactive;
+                cross-axis-self-alignment: center;
+                clicked => {
+                    root.select();
+                    root.menu({ x: root.width - Columns.pad-right - self.width, y: root.height - 6px });
+                }
+            }
+        }
+    }
+
+    if root.focused : Rectangle {
+        x: 1px;
+        y: 1px;
+        width: parent.width - 2px;
+        height: parent.height - 2px;
+        border-radius: 4px;
+        border-width: 1.5px;
+        border-color: Theme.text;
+    }
+}
