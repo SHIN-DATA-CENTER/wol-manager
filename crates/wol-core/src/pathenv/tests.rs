@@ -52,11 +52,34 @@ fn append_is_idempotent_and_keeps_everything_else() {
         append_entry(&added, r"d:\wol manager\BIN\", &vars).unwrap(),
         None
     );
+    // A trailing separator is kept after the new entry.
     assert_eq!(
         append_entry("C:\\a;", r"D:\x", &vars).unwrap().unwrap(),
-        r"C:\a;D:\x"
+        r"C:\a;D:\x;"
     );
     assert_eq!(append_entry("", r"D:\x", &vars).unwrap().unwrap(), r"D:\x");
+}
+
+#[test]
+fn add_then_remove_restores_the_value_byte_for_byte() {
+    // Found on the GitHub runner, whose user PATH ends with ';'.
+    for original in [
+        r"%USERPROFILE%\.dotnet\tools;%USERPROFILE%\.cargo\bin;%USERPROFILE%\AppData\Local\Microsoft\WindowsApps;",
+        r"C:\a;C:\b",
+        r"C:\a;;",
+        r"C:\a;;C:\b",
+        ";",
+        "",
+    ] {
+        let dir = r"C:\Users\x\AppData\Local\Programs\WoL Manager\bin";
+        let added = append_entry(original, dir, &vars).unwrap().unwrap();
+        assert_eq!(find_entries(&added, dir, &vars).len(), 1, "{original:?}");
+        let removed = remove_entries(&added, dir, &vars).unwrap();
+        assert_eq!(
+            removed, original,
+            "round trip of {original:?} via {added:?}"
+        );
+    }
 }
 
 #[test]

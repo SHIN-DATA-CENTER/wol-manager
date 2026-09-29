@@ -92,6 +92,9 @@ jobs:
 
       - name: Cache cargo registry, target and installed tools
         uses: Swatinem/rust-cache@v2
+        with:
+          # Keep the (long) Slint build even when a later step such as the smoke test fails.
+          cache-on-failure: true
 
       - name: Install cargo-about 0.9.2
         uses: taiki-e/install-action@v2

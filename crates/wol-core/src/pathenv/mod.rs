@@ -225,10 +225,12 @@ pub fn append_entry(
     if !find_entries(value, dir, lookup).is_empty() {
         return Ok(None);
     }
+    // A trailing `;` is kept after the new entry, so that `remove_entries` restores the
+    // original value byte for byte ("a;b;" -> "a;b;dir;" -> "a;b;").
     let new = if value.is_empty() {
         dir.to_owned()
     } else if value.ends_with(';') {
-        format!("{value}{dir}")
+        format!("{value}{dir};")
     } else {
         format!("{value};{dir}")
     };

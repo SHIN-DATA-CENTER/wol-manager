@@ -357,6 +357,11 @@ function Invoke-Case([string]$Id, [string]$Title, [scriptblock]$Body) {
     } catch {
         $results.Add([pscustomobject]@{ Id = $Id; Title = $Title; Result = 'FAIL'; Detail = "$_" })
         Write-Host "[$Id] FAIL: $_" -ForegroundColor Red
+        if ($IsCi) {
+            # GitHub annotation (visible on the run page without opening the log).
+            $msg = ("[$Id] $Title -- $_") -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+            Write-Host "::error title=Installer smoke test::$msg"
+        }
         Remove-Leftovers
     }
 }
